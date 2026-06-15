@@ -67,8 +67,8 @@ This lab builds a complete CI/CD pipeline:
 │  ├── nginx:1.0-falcon           (patched by pipeline)                                │
 │  ├── python-flask:1.0                                                                │
 │  ├── python-flask:1.0-falcon                                                         │
-│  ├── node-express:1.0                                                                │
-│  ├── node-express:1.0-falcon                                                         │
+│  ├── go-api:1.0                                                                │
+│  ├── go-api:1.0-falcon                                                         │
 │  └── falcon-container:latest    (sensor image, pulled from CrowdStrike registry)     │
 └──────────────────────────────────────────────────────────────────────────────────────┘
                                          │
@@ -242,26 +242,43 @@ def hello():
     return {"status": "ok", "service": "python-flask", "patched": False}
 EOF
 
-# node-express - simple API
-mkdir -p node-express && cat > node-express/Dockerfile <<'EOF'
-FROM node:22-alpine
+# go-api - simple API (no external dependencies, uses Go stdlib)
+mkdir -p go-api && cat > go-api/Dockerfile <<'EOF'
+FROM golang:1.23-alpine AS builder
 WORKDIR /app
-RUN npm init -y && npm install express
-COPY server.js .
+COPY main.go .
+RUN CGO_ENABLED=0 go build -o server main.go
+
+FROM alpine:3.20
+COPY --from=builder /app/server /server
 EXPOSE 8080
-CMD ["node", "server.js"]
+CMD ["/server"]
 EOF
-cat > node-express/server.js <<'EOF'
-const express = require('express');
-const app = express();
-app.get('/', (req, res) => res.json({ status: 'ok', service: 'node-express', patched: false }));
-app.listen(8080, () => console.log('Listening on 8080'));
+cat > go-api/main.go <<'EOF'
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func main() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"service": "go-api",
+			"patched": false,
+		})
+	})
+	http.ListenAndServe(":8080", nil)
+}
 EOF
 
 # Build all three
-docker build -t ${GAR_BASE}/nginx:1.0 ./nginx/
-docker build -t ${GAR_BASE}/python-flask:1.0 ./python-flask/
-docker build -t ${GAR_BASE}/node-express:1.0 ./node-express/
+docker build --platform linux/amd64 -t ${GAR_BASE}/nginx:1.0 ./nginx/
+docker build --platform linux/amd64 -t ${GAR_BASE}/python-flask:1.0 ./python-flask/
+docker build --platform linux/amd64 -t ${GAR_BASE}/go-api:1.0 ./go-api/
 ```
 
 ### Step 4: Push Unpatched Images to GAR
@@ -275,10 +292,10 @@ gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
 docker push ${GAR_BASE}/nginx:1.0
 docker push ${GAR_BASE}/python-flask:1.0
-docker push ${GAR_BASE}/node-express:1.0
+docker push ${GAR_BASE}/go-api:1.0
 ```
 
-- [ ] **Verify in Console:** Navigate to **Artifact Registry** → **falcon-lab** → Confirm `nginx`, `python-flask`, and `node-express` appear with the `:1.0` tag.
+- [ ] **Verify in Console:** Navigate to **Artifact Registry** → **falcon-lab** → Confirm `nginx`, `python-flask`, and `go-api` appear with the `:1.0` tag.
 
 ---
 
@@ -576,7 +593,7 @@ on:
         options:
           - nginx
           - python-flask
-          - node-express
+          - go-api
       image_tag:
         description: 'Image tag to patch (e.g., 1.0)'
         required: true
@@ -663,7 +680,7 @@ jobs:
 
 - [ ] Repeat for the other two images:
   - `python-flask` : `1.0`
-  - `node-express` : `1.0`
+  - `go-api` : `1.0`
 
 <details>
 <summary>CLI equivalent (using gh CLI)</summary>
@@ -678,7 +695,7 @@ gh workflow run patch-cloudrun-image.yml \
   -f image_tag=1.0
 
 gh workflow run patch-cloudrun-image.yml \
-  -f image_name=node-express \
+  -f image_name=go-api \
   -f image_tag=1.0
 ```
 
@@ -695,13 +712,13 @@ gh workflow run patch-cloudrun-image.yml \
   |-------|-------------|
   | `nginx` | `:1.0`, `:1.0-falcon` |
   | `python-flask` | `:1.0`, `:1.0-falcon` |
-  | `node-express` | `:1.0`, `:1.0-falcon` |
+  | `go-api` | `:1.0`, `:1.0-falcon` |
 
 <details>
 <summary>CLI equivalent</summary>
 
 ```bash
-for img in nginx python-flask node-express; do
+for img in nginx python-flask go-api; do
   echo "=== $img ==="
   gcloud artifacts docker tags list \
     ${REGION}-docker.pkg.dev/${PROJECT_ID}/falcon-lab/${img} \
@@ -964,7 +981,7 @@ jobs:
         image:
           - nginx
           - python-flask
-          - node-express
+          - go-api
       fail-fast: false
 
     steps:
