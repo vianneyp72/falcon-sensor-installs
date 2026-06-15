@@ -346,7 +346,9 @@ docker push ${GAR_BASE}/falcon-container:latest
 
 ### Step 4: Rebuild as amd64-Only Image
 
-> **What & Why:** The pulled sensor image is multi-arch, but Cloud Run requires a single-architecture manifest. Re-pull with an explicit platform flag and push back to overwrite the manifest list with a plain amd64 image.
+> **What & Why:** The pulled sensor image is multi-arch. When patching locally on an Apple Silicon Mac, `falconutil` needs an explicit amd64 image since Docker would otherwise pull the arm64 variant. Re-pull with an explicit platform flag and push back to overwrite the manifest list with a plain amd64 image.
+>
+> **Note:** This step is only needed when testing locally on a Mac (arm64). On GitHub Actions (`ubuntu-latest`), the runner is already amd64, so `docker pull` automatically resolves the multi-arch manifest to the correct variant without needing `--platform`.
 
 - [ ] Pull and push as amd64 only:
 
