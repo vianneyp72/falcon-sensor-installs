@@ -433,6 +433,9 @@ function buildDiagramFromContent(text) {
   if (text.includes('Ansible Control Node') || text.includes('ansible-playbook')) {
     return buildAnsibleDiagram(text)
   }
+  if (text.includes('WORKLOAD IDENTITY FEDERATION') || text.includes('WIF Pool')) {
+    return buildWifDiagram(text)
+  }
   if (text.includes('BUILD TIME') || text.includes('falconutil')) {
     return buildDockerPatchDiagram(text)
   }
@@ -532,6 +535,74 @@ function buildAnsibleDiagram(text) {
     // VMs report telemetry to CrowdStrike Cloud
     { id: 'e-telem1', source: 'deb12', target: 'cloud', label: 'HTTPS/443', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
     { id: 'e-telem2', source: 'deb13', target: 'cloud', label: 'HTTPS/443', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
+  ]
+
+  return { nodes, edges }
+}
+
+function buildWifDiagram(text) {
+  const nodes = [
+    {
+      id: 'github-runner',
+      position: { x: 0, y: 80 },
+      data: {
+        label: 'GitHub Actions Runner',
+        sublabel: 'Sends OIDC token (JWT)',
+      },
+      type: 'custom',
+      style: { width: 180, height: 60 },
+    },
+    {
+      id: 'wif-pool',
+      position: { x: 250, y: 0 },
+      data: {
+        label: 'WIF Pool + Provider',
+        sublabel: 'Steps 2 & 3',
+        items: ['Validates GitHub OIDC token', 'Checks repo matches condition'],
+      },
+      type: 'custom',
+      style: { width: 220, height: 100 },
+    },
+    {
+      id: 'iam-binding',
+      position: { x: 250, y: 150 },
+      data: {
+        label: 'IAM Binding',
+        sublabel: 'Step 4',
+        items: ['principalSet → SA', 'Workload Identity User role'],
+      },
+      type: 'custom',
+      style: { width: 220, height: 100 },
+    },
+    {
+      id: 'service-account',
+      position: { x: 540, y: 80 },
+      data: {
+        label: 'Service Account',
+        sublabel: 'github-actions-falcon (Step 1)',
+        isApi: true,
+      },
+      type: 'custom',
+      style: { width: 190, height: 60 },
+    },
+    {
+      id: 'gar',
+      position: { x: 540, y: 220 },
+      data: {
+        label: 'Artifact Registry',
+        sublabel: 'Push/pull images',
+        isCloud: true,
+      },
+      type: 'custom',
+      style: { width: 190, height: 60 },
+    },
+  ]
+
+  const edges = [
+    { id: 'e-gh-wif', source: 'github-runner', target: 'wif-pool', label: 'OIDC Token', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
+    { id: 'e-wif-iam', source: 'wif-pool', target: 'iam-binding', label: 'Token valid?', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
+    { id: 'e-iam-sa', source: 'iam-binding', target: 'service-account', label: 'Impersonate', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
+    { id: 'e-sa-gar', source: 'service-account', target: 'gar', label: 'Access granted', type: 'smoothstep', animated: true, style: { stroke: '#d29922', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#d29922' } },
   ]
 
   return { nodes, edges }

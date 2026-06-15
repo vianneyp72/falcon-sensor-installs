@@ -1,6 +1,7 @@
 # Falcon Sensor on Google Cloud Run — GitHub Actions + Artifact Registry Pipeline
 
 > **Prerequisites:**
+>
 > - GCP project with Artifact Registry, Cloud Run, and IAM APIs enabled
 > - GitHub repository with Actions enabled
 > - Docker Desktop running locally
@@ -11,14 +12,14 @@
 
 ## Reference Docs
 
-| Source | Link |
-|--------|------|
-| CrowdStrike falconutil-action | https://github.com/CrowdStrike/falconutil-action |
-| Deploy Falcon Container Sensor on Cloud Run | https://falcon.crowdstrike.com/documentation/page/p6af9353 |
-| Deploy Falcon Container Sensor Embedded in Image | https://falcon.crowdstrike.com/documentation/page/k58f1a5e |
-| GCP Artifact Registry Docker repos | https://cloud.google.com/artifact-registry/docs/docker |
-| GCP Workload Identity Federation for GitHub | https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines |
-| GCP Cloud Run deployment | https://cloud.google.com/run/docs/deploying |
+| Source                                           | Link                                                                                     |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| CrowdStrike falconutil-action                    | https://github.com/CrowdStrike/falconutil-action                                         |
+| Deploy Falcon Container Sensor on Cloud Run      | https://falcon.crowdstrike.com/documentation/page/p6af9353                               |
+| Deploy Falcon Container Sensor Embedded in Image | https://falcon.crowdstrike.com/documentation/page/k58f1a5e                               |
+| GCP Artifact Registry Docker repos               | https://cloud.google.com/artifact-registry/docs/docker                                   |
+| GCP Workload Identity Federation for GitHub      | https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines |
+| GCP Cloud Run deployment                         | https://cloud.google.com/run/docs/deploying                                              |
 
 ---
 
@@ -103,13 +104,13 @@ At runtime, the sensor process runs in user space alongside your application —
 
 ### Key Parameters
 
-| Flag | Purpose |
-|------|---------|
-| `--source-image-uri` | The unpatched application image to read from GAR |
+| Flag                 | Purpose                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| `--source-image-uri` | The unpatched application image to read from GAR                   |
 | `--target-image-uri` | Where to write the patched image (same GAR repo, `-falcon` suffix) |
-| `--falcon-image-uri` | The Falcon sensor image (contains `falconutil` + sensor binaries) |
-| `--cid` | Your CrowdStrike Customer ID with checksum |
-| `--cloud-service` | Set to `CLOUDRUN` for Cloud Run metadata collection |
+| `--falcon-image-uri` | The Falcon sensor image (contains `falconutil` + sensor binaries)  |
+| `--cid`              | Your CrowdStrike Customer ID with checksum                         |
+| `--cloud-service`    | Set to `CLOUDRUN` for Cloud Run metadata collection                |
 
 ### The `-falcon` Suffix Convention
 
@@ -343,6 +344,25 @@ docker push ${GAR_BASE}/falcon-container:latest
 
 - [ ] **Verify in Console:** Navigate to **Artifact Registry** → **falcon-lab** → Confirm `falcon-container` with `:latest` tag exists.
 
+### Step 4: Rebuild as amd64-Only Image
+
+> **What & Why:** The pulled sensor image is multi-arch, but Cloud Run requires a single-architecture manifest. Re-pull with an explicit platform flag and push back to overwrite the manifest list with a plain amd64 image.
+
+- [ ] Pull and push as amd64 only:
+
+```bash
+docker pull --platform linux/amd64 ${GAR_BASE}/falcon-container:latest
+docker push ${GAR_BASE}/falcon-container:latest
+```
+
+- [ ] Confirm the architecture is set:
+
+```bash
+docker image inspect ${GAR_BASE}/falcon-container:latest | grep Architecture
+```
+
+> **Expected output:** `"Architecture": "amd64"`
+
 ---
 
 ## 5. Patch an Image Manually (Local Docker)
@@ -367,10 +387,12 @@ docker run --user 0:0 \
   --target-image-uri ${GAR_BASE}/nginx:1.0-falcon \
   --falcon-image-uri ${GAR_BASE}/falcon-container:latest \
   --cid $FALCON_CID \
+  --image-pull-policy IfNotPresent \
   --cloud-service CLOUDRUN
 ```
 
 > **What to look for:** Output should end with:
+>
 > ```
 > Successfully patched image and saved to <target_image_uri>
 > ```
@@ -386,6 +408,7 @@ docker images | grep "falcon-lab/nginx"
 ```
 
 Expected output (sizes approximate):
+
 ```
 <gar>/nginx   1.0-falcon   abc123   30 seconds ago   85MB
 <gar>/nginx   1.0          def456   5 minutes ago    45MB
@@ -420,6 +443,41 @@ docker push ${GAR_BASE}/nginx:1.0-falcon
 ## 6. Set Up Workload Identity Federation
 
 > **~15 min | Intermediate**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│  WORKLOAD IDENTITY FEDERATION (WIF) — How GitHub Actions authenticates to GCP       │
+│  without storing any keys                                                           │
+│                                                                                     │
+│  ┌────────────┐       ┌────────────────┐       ┌────────────────┐                  │
+│  │ GitHub     │──────►│ WIF Pool +     │──────►│ Service Account │                  │
+│  │ Actions    │ OIDC  │ Provider       │ Trust │ github-actions- │                  │
+│  │ Runner     │ Token │ (Step 2 & 3)   │       │ falcon (Step 1) │                  │
+│  └────────────┘       └────────────────┘       └────────────────┘                  │
+│        │                      │                         │                           │
+│   Sends a short-lived    Validates the token       Gets a GCP access                │
+│   JWT: "I'm repo         and checks: "Is this      token with the SA's             │
+│   vianneyp72/cloud-run"  from a repo I trust?"     permissions (Step 4)            │
+│                                                                                     │
+│  Result: GitHub Actions can push/pull from Artifact Registry — zero stored keys     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Plain-English Walkthrough (for beginners):**
+>
+> Think of WIF like a hotel keycard system:
+>
+> 1. **Service Account (Step 1)** — This is the "hotel room" with specific permissions (push/pull images). Nobody can get in without a valid keycard.
+>
+> 2. **Workload Identity Pool (Step 2)** — This is the hotel's "front desk system." It says "I accept keycards issued by certain providers."
+>
+> 3. **OIDC Provider (Step 3)** — This registers GitHub as a trusted keycard issuer. When a GitHub Actions workflow runs, GitHub gives it a short-lived ID token (like a digital passport) that says "I am repo X, running workflow Y."
+>
+> 4. **IAM Binding (Step 4)** — This is the rule that says "If someone shows up with a valid keycard from GitHub AND they're from repo `vianneyp72/cloud-run`, give them access to the hotel room (service account)." This is the most confusing step — you're not granting roles TO the service account, you're telling GCP who is allowed to BECOME the service account.
+>
+> 5. **Provider Resource Name (Step 5)** — This is the full address your GitHub workflow uses to say "I want to authenticate through this specific front desk." You'll paste it into GitHub as a variable.
+>
+> **The big win:** No JSON key files, no secrets that can leak, no manual rotation. The token lives for ~60 seconds and is never stored anywhere.
 
 ### Step 1: Create a Service Account for GitHub Actions
 
@@ -513,11 +571,25 @@ gcloud iam workload-identity-pools providers create-oidc github \
 
 > **What & Why:** This IAM binding says "tokens from my GitHub repo (via the WIF pool) can act as this service account." Without it, authentication succeeds but authorization fails.
 
-- [ ] **Console:** Navigate to **IAM & Admin** → **Service Accounts** → Click **github-actions-falcon** → **Permissions** tab → **Grant Access**
-  - New principal: `principalSet://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/<GITHUB_ORG>/<REPO_NAME>`
-  - Role: **Service Account Token Creator** (`roles/iam.serviceAccountTokenCreator`)
-  - Role: **Workload Identity User** (`roles/iam.workloadIdentityUser`)
-  - Click **Save**
+- [ ] Export the project number (needed for the principal set reference):
+
+```bash
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+```
+
+- [ ] **Console:**
+  1. Navigate to **IAM & Admin** → **Service Accounts**
+  2. Click the **github-actions-falcon** service account to open its details
+  3. Click the **Permissions** tab (not the IAM tab on the left — this is the tab *within* the service account page)
+  4. Under **"Principals with access to this service account"**, click **Grant Access**
+  5. In the **"New principals"** field, paste:
+     ```
+     principalSet://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/<GITHUB_ORG>/<REPO_NAME>
+     ```
+  6. Assign the role: **Workload Identity User** (`roles/iam.workloadIdentityUser`)
+  7. Click **Save**
+
+> **Note:** This is NOT the same as granting roles to the service account itself (which is what "Manage Access" on the IAM page does). You are granting *other identities* (your WIF pool) permission to *impersonate* this service account.
 
 <details>
 <summary>CLI equivalent</summary>
@@ -587,7 +659,7 @@ on:
   workflow_dispatch:
     inputs:
       image_name:
-        description: 'Image name in GAR (e.g., nginx)'
+        description: "Image name in GAR (e.g., nginx)"
         required: true
         type: choice
         options:
@@ -595,13 +667,13 @@ on:
           - python-flask
           - go-api
       image_tag:
-        description: 'Image tag to patch (e.g., 1.0)'
+        description: "Image tag to patch (e.g., 1.0)"
         required: true
         type: string
-        default: '1.0'
+        default: "1.0"
 
 permissions:
-  id-token: write   # Required for WIF OIDC
+  id-token: write # Required for WIF OIDC
   contents: read
 
 env:
@@ -897,7 +969,7 @@ terraform apply
 
 ### Challenge 1: Add FCS Vulnerability Scan Before Patching
 
-**Scenario:** Your security policy requires that images pass a vulnerability scan *before* they get the Falcon sensor embedded. If an image has critical vulnerabilities, it should be rejected — don't waste time patching an image that needs to be rebuilt.
+**Scenario:** Your security policy requires that images pass a vulnerability scan _before_ they get the Falcon sensor embedded. If an image has critical vulnerabilities, it should be rejected — don't waste time patching an image that needs to be rebuilt.
 
 Add a scan step using `crowdstrike/fcs-action` that runs before the patching step in the workflow.
 
@@ -914,22 +986,22 @@ The `crowdstrike/fcs-action` uses `scan_type: image` and the `image` input for t
 Add these steps between "Pull source image" and "Patch image with Falcon sensor":
 
 ```yaml
-      - name: Scan image for vulnerabilities
-        id: scan
-        uses: crowdstrike/fcs-action@v4.0.1
-        with:
-          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: ${{ vars.FALCON_REGION }}
-          scan_type: image
-          image: ${{ env.GAR_BASE }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
-        env:
-          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+- name: Scan image for vulnerabilities
+  id: scan
+  uses: crowdstrike/fcs-action@v4.0.1
+  with:
+    falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+    falcon_region: ${{ vars.FALCON_REGION }}
+    scan_type: image
+    image: ${{ env.GAR_BASE }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+  env:
+    FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
 
-      - name: Gate on scan results
-        if: steps.scan.outputs.exit-code != '0'
-        run: |
-          echo "::error::Image failed vulnerability scan. Fix vulnerabilities before patching."
-          exit 1
+- name: Gate on scan results
+  if: steps.scan.outputs.exit-code != '0'
+  run: |
+    echo "::error::Image failed vulnerability scan. Fix vulnerabilities before patching."
+    exit 1
 ```
 
 The workflow will now fail before patching if the image has critical/high findings.
@@ -961,9 +1033,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Tag to patch across all images'
+        description: "Tag to patch across all images"
         required: true
-        default: '1.0'
+        default: "1.0"
 
 permissions:
   id-token: write
@@ -1103,19 +1175,19 @@ This creates a fully automated pipeline: dev pushes image → GAR → Pub/Sub �
 
 ## 12. Quick Reference
 
-| Action | Console Path | CLI Command |
-|--------|-------------|-------------|
-| Create GAR repo | Artifact Registry → Create Repository | `gcloud artifacts repositories create <name> --repository-format=docker --location=<region>` |
-| List image tags | Artifact Registry → Repo → Image | `gcloud artifacts docker tags list <image-path>` |
-| GAR Docker login | — | `gcloud auth configure-docker <region>-docker.pkg.dev` |
-| Pull CrowdStrike sensor | — | `bash <(curl -Ls .../falcon-container-sensor-pull.sh) -t falcon-container --platform x86_64` |
-| Patch image locally | — | `docker run ... falconutil patch-image --source-image-uri <src> --target-image-uri <tgt> --falcon-image-uri <sensor> --cid <cid> --cloud-service CLOUDRUN` |
-| Create service account | IAM → Service Accounts → Create | `gcloud iam service-accounts create <name>` |
-| Create WIF pool | IAM → Workload Identity Federation → Create Pool | `gcloud iam workload-identity-pools create <name> --location=global` |
-| Add OIDC provider | WIF Pool → Add Provider | `gcloud iam workload-identity-pools providers create-oidc <name> ...` |
-| Deploy to Cloud Run | Cloud Run → Create Service | `gcloud run deploy <name> --image=<uri> --execution-environment=gen2` |
-| Trigger GH Actions | Actions → Workflow → Run | `gh workflow run patch-cloudrun-image.yml -f image_name=nginx -f image_tag=1.0` |
-| Get project number | — | `gcloud projects describe $PROJECT_ID --format='value(projectNumber)'` |
+| Action                  | Console Path                                     | CLI Command                                                                                                                                                |
+| ----------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create GAR repo         | Artifact Registry → Create Repository            | `gcloud artifacts repositories create <name> --repository-format=docker --location=<region>`                                                               |
+| List image tags         | Artifact Registry → Repo → Image                 | `gcloud artifacts docker tags list <image-path>`                                                                                                           |
+| GAR Docker login        | —                                                | `gcloud auth configure-docker <region>-docker.pkg.dev`                                                                                                     |
+| Pull CrowdStrike sensor | —                                                | `bash <(curl -Ls .../falcon-container-sensor-pull.sh) -t falcon-container --platform x86_64`                                                               |
+| Patch image locally     | —                                                | `docker run ... falconutil patch-image --source-image-uri <src> --target-image-uri <tgt> --falcon-image-uri <sensor> --cid <cid> --cloud-service CLOUDRUN` |
+| Create service account  | IAM → Service Accounts → Create                  | `gcloud iam service-accounts create <name>`                                                                                                                |
+| Create WIF pool         | IAM → Workload Identity Federation → Create Pool | `gcloud iam workload-identity-pools create <name> --location=global`                                                                                       |
+| Add OIDC provider       | WIF Pool → Add Provider                          | `gcloud iam workload-identity-pools providers create-oidc <name> ...`                                                                                      |
+| Deploy to Cloud Run     | Cloud Run → Create Service                       | `gcloud run deploy <name> --image=<uri> --execution-environment=gen2`                                                                                      |
+| Trigger GH Actions      | Actions → Workflow → Run                         | `gh workflow run patch-cloudrun-image.yml -f image_name=nginx -f image_tag=1.0`                                                                            |
+| Get project number      | —                                                | `gcloud projects describe $PROJECT_ID --format='value(projectNumber)'`                                                                                     |
 
 ---
 
@@ -1154,4 +1226,4 @@ gcloud iam service-accounts delete \
 
 ---
 
-*Created: 2026-06-15 | Topics: cloud-security, falcon-sensor, cloud-run, artifact-registry, github-actions, workload-identity-federation, image-patching, serverless*
+_Created: 2026-06-15 | Topics: cloud-security, falcon-sensor, cloud-run, artifact-registry, github-actions, workload-identity-federation, image-patching, serverless_
