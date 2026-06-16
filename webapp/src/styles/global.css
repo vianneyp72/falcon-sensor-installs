@@ -95,6 +95,8 @@ code {
   font-size: 1rem;
   color: var(--text);
   white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .app-header__logo svg {

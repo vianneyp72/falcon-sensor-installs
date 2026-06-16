@@ -16,7 +16,7 @@ Official Docs: https://docs.crowdstrike.com/r/en-US/qg0ygdwl/l303c850
 
 - Kubernetes cluster running (EKS, GKE Standard, AKS, kubeadm, Rancher, k3s, etc.)
 - CrowdStrike Falcon API credentials (CID, Client ID + Secret)
-  - Required API scopes: **Falcon Images Download** (Read), **Sensor Download** (Read), **Falcon Container Image** (Read/Write)
+  - Required API scopes: **Falcon Images Download** (Read), **Sensor Download** (Read), **Falcon Container Image** (Read/Write), **Falcon Container CLI** (Write)
 - Helm 3 installed
 - kubectl configured for the cluster
 
@@ -33,7 +33,6 @@ export FALCON_CLIENT_SECRET="<YOUR_FALCON_CLIENT_SECRET>"
 curl -sSL https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/refs/heads/main/bash/containers/falcon-container-sensor-pull/falcon-container-sensor-pull.sh | bash -s -- \
   --client-id $FALCON_CLIENT_ID \
   --client-secret $FALCON_CLIENT_SECRET \
-  --region us-gov-2 \
   --get-pull-token
 ```
 
@@ -42,7 +41,6 @@ curl -sSL https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/refs/head
   --client-id $FALCON_CLIENT_ID \
   --client-secret $FALCON_CLIENT_SECRET \
   --type falcon-sensor \
-  --region us-gov-2 \
   --get-image-path
 ```
 
