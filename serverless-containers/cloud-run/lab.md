@@ -1,5 +1,7 @@
 # Falcon Sensor on Google Cloud Run — GitHub Actions + Artifact Registry Pipeline
 
+> **Performance note:** Patching adds ~2.5 seconds of cold start latency per instance (sensor initialization before your app starts). Image size grows by ~60MB (the sensor rootfs). Once running, there is no per-request overhead. Set minimum instances to 1 in production to avoid cold starts on first request.
+
 > **Prerequisites:**
 >
 > - GCP project with Artifact Registry, Cloud Run, and IAM APIs enabled
@@ -241,7 +243,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def hello():
-    return {"status": "ok", "service": "python-flask", "patched": False}
+    return {"status": "ok", "service": "python-flask"}
 EOF
 
 # go-api - simple API (no external dependencies, uses Go stdlib)
@@ -267,10 +269,9 @@ import (
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]interface{}{S
 			"status":  "ok",
 			"service": "go-api",
-			"patched": false,
 		})
 	})
 	http.ListenAndServe(":8080", nil)
@@ -471,13 +472,9 @@ docker push ${GAR_BASE}/nginx:1.0-falcon
 > Think of WIF like a hotel keycard system:
 >
 > 1. **Service Account (Step 1)** — This is the "hotel room" with specific permissions (push/pull images). Nobody can get in without a valid keycard.
->
 > 2. **Workload Identity Pool (Step 2)** — This is the hotel's "front desk system." It says "I accept keycards issued by certain providers."
->
 > 3. **OIDC Provider (Step 3)** — This registers GitHub as a trusted keycard issuer. When a GitHub Actions workflow runs, GitHub gives it a short-lived ID token (like a digital passport) that says "I am repo X, running workflow Y."
->
 > 4. **IAM Binding (Step 4)** — This is the rule that says "If someone shows up with a valid keycard from GitHub AND they're from repo `vianneyp72/cloud-run`, give them access to the hotel room (service account)." This is the most confusing step — you're not granting roles TO the service account, you're telling GCP who is allowed to BECOME the service account.
->
 > 5. **Provider Resource Name (Step 5)** — This is the full address your GitHub workflow uses to say "I want to authenticate through this specific front desk." You'll paste it into GitHub as a variable.
 >
 > **The big win:** No JSON key files, no secrets that can leak, no manual rotation. The token lives for ~60 seconds and is never stored anywhere.
@@ -583,7 +580,7 @@ export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(pro
 - [ ] **Console:**
   1. Navigate to **IAM & Admin** → **Service Accounts**
   2. Click the **github-actions-falcon** service account to open its details
-  3. Click the **Permissions** tab (not the IAM tab on the left — this is the tab *within* the service account page)
+  3. Click the **Permissions** tab (not the IAM tab on the left — this is the tab _within_ the service account page)
   4. Under **"Principals with access to this service account"**, click **Grant Access**
   5. In the **"New principals"** field, paste:
      ```
@@ -592,7 +589,7 @@ export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(pro
   6. Assign the role: **Workload Identity User** (`roles/iam.workloadIdentityUser`)
   7. Click **Save**
 
-> **Note:** This is NOT the same as granting roles to the service account itself (which is what "Manage Access" on the IAM page does). You are granting *other identities* (your WIF pool) permission to *impersonate* this service account.
+> **Note:** This is NOT the same as granting roles to the service account itself (which is what "Manage Access" on the IAM page does). You are granting _other identities_ (your WIF pool) permission to _impersonate_ this service account.
 
 <details>
 <summary>CLI equivalent</summary>
