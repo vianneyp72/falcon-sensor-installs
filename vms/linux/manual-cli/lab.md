@@ -36,32 +36,34 @@ The Falcon sensor for Linux is a lightweight kernel-level agent. Once installed,
 4. Receives policy updates and prevention rules from the cloud in real time
 
 ```
-Linux Host
-═══════════════════════════════════════
-
-  User Space
-  ┌────────────────────────────────┐
-  │  falcon-sensor (daemon)        │
-  │    • Manages cloud connection  │
-  │    • Applies prevention rules  │
-  │    • Streams telemetry         │
-  └───────────────┬────────────────┘
-                  │
-  Kernel Space    │
-  ┌───────────────▼────────────────┐
-  │  falcon-sensor.ko (module)     │
-  │    • Intercepts system calls   │
-  │    • Monitors process creation │
-  │    • Tracks file/network I/O   │
-  └───────────────┬────────────────┘
-                  │
-═══════════════════════════════════════
-                  │ TLS 443
-                  ▼
-  ┌────────────────────────────────┐
-  │  CrowdStrike Falcon Cloud      │
-  │  (ts01-b.cloudsink.net)        │
-  └────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│           Linux Host                     │
+│                                         │
+│  ┌───────────────────────────────────┐  │
+│  │  falcon-sensor daemon             │  │
+│  │  (user space)                     │  │
+│  │                                   │  │
+│  │  Manages cloud connection         │  │
+│  │  Applies prevention policies      │  │
+│  │  Streams telemetry                │  │
+│  └─────────────────┬─────────────────┘  │
+│                    │                     │
+│  ┌─────────────────▼─────────────────┐  │
+│  │  falcon-sensor.ko kernel module   │  │
+│  │  (kernel space)                   │  │
+│  │                                   │  │
+│  │  Intercepts system calls          │  │
+│  │  Monitors process creation        │  │
+│  │  Tracks file and network I/O      │  │
+│  └─────────────────┬─────────────────┘  │
+│                    │                     │
+└────────────────────┼─────────────────────┘
+                     │ TLS 443
+                     ▼
+┌─────────────────────────────────────────┐
+│       CrowdStrike Falcon Cloud           │
+│       (ts01-b.cloudsink.net)             │
+└─────────────────────────────────────────┘
 ```
 
 **Key facts:**
