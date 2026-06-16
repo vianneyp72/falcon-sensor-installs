@@ -41,7 +41,7 @@ Only grant the scopes required for your specific deployment method.
 |---|---|---|
 | **Falcon Images Download** | Read | Pulling the base Falcon sensor layer for patching |
 | **Falcon Container Image** | Read/Write | Pushing and pulling patched container images |
-| **Falcon Container CLI** | Write | Registering patched images with the Falcon cloud |
+| **Falcon Container CLI** | Write | IAR agent communication — registering assessed images with the Falcon cloud |
 
 ## Environment Variable Setup
 
