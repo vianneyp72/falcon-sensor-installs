@@ -13,15 +13,35 @@ This document covers how to create and configure API credentials for automated F
 
 ## Required API Scopes
 
-| Scope Name | Permission | What Needs It |
+Only grant the scopes required for your specific deployment method.
+
+### All Deployments
+
+| Scope Name | Permission | Purpose |
 |---|---|---|
-| **Sensor download** | Read | Downloading sensor installers, pulling container images via `falcon-container-sensor-pull` |
-| **Falcon Images Download** | Read | Pulling Falcon container images from the CrowdStrike registry |
+| **Sensor download** | Read | Downloading sensor installers and pulling container images |
+
+### VM / Host Deployments
+
+| Scope Name | Permission | Purpose |
+|---|---|---|
 | **Sensor update policies** | Read | Querying sensor versions and update policies |
 | **Host** | Read | Verifying host registration post-install |
 | **Installation tokens** | Read | Retrieving installation tokens for sensor registration |
 
-> **Note:** Only grant the scopes required for your specific deployment method. The table above is a superset across all labs in this repository.
+### Container Deployments (Kubernetes, ECS, Cloud Run)
+
+| Scope Name | Permission | Purpose |
+|---|---|---|
+| **Falcon Images Download** | Read | Pulling Falcon container images from the CrowdStrike registry |
+
+### Image at Runtime (IAR) / Container Image Patching
+
+| Scope Name | Permission | Purpose |
+|---|---|---|
+| **Falcon Images Download** | Read | Pulling the base Falcon sensor layer for patching |
+| **Falcon Container Image** | Read/Write | Pushing and pulling patched container images |
+| **Falcon Container CLI** | Write | Registering patched images with the Falcon cloud |
 
 ## Environment Variable Setup
 
