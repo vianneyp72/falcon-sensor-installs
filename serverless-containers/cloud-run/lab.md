@@ -8,6 +8,7 @@
 > - `gcloud` CLI authenticated (`gcloud auth list` shows your account)
 > - CrowdStrike API client with **Falcon Images Download: Read** and **Sensor Download: Read** scopes
 > - CrowdStrike CID with checksum
+> - Cloud Run services must use **Second generation** execution environment (gen2) for patched images
 > - ~130 minutes
 
 ## Reference Docs
@@ -840,7 +841,7 @@ gcloud run deploy nginx-falcon \
 
 </details>
 
-> **Critical:** The `--execution-environment=gen2` flag (or selecting "Second generation" in console) is mandatory. The Falcon Container sensor will not function on Cloud Run's first-generation environment.
+> **Critical:** The `--execution-environment=gen2` flag (or selecting "Second generation" in console) is **mandatory** for patched images. Gen1 Cloud Run uses gVisor, a sandboxed kernel that blocks the syscalls the Falcon sensor needs to start. Gen2 uses a full Linux kernel in a microVM, giving the sensor the `/proc`, `/sys`, and capabilities it requires. Without gen2, the sensor exits immediately (exit code 255) and the container fails health checks.
 
 ### Step 2: Verify the Deployment
 
