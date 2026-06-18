@@ -16,9 +16,9 @@
 | Source                             | Link                                                                                  |
 | ---------------------------------- | ------------------------------------------------------------------------------------- |
 | falcon-linux-install.sh            | https://github.com/CrowdStrike/falcon-scripts/tree/main/bash/install                  |
-| Deploy Falcon Sensor for Linux     | https://falcon.crowdstrike.com/documentation/page/cba4f917                            |
-| falconctl Configuration Options    | https://falcon.crowdstrike.com/documentation/page/f4d593ca                            |
-| Installation Tokens                | https://falcon.crowdstrike.com/documentation/page/cf475d86                            |
+| Deploy Falcon Sensor for Linux     | https://docs.crowdstrike.com/r/en-US/iopiipqy/cba4f917                               |
+| falconctl Configuration Options    | https://docs.crowdstrike.com/r/en-US/iopiipqy/f4d593ca                               |
+| Installation Tokens                | https://docs.crowdstrike.com/r/en-US/kgsgkjd3/cf475d86                               |
 
 ---
 

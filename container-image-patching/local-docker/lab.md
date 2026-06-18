@@ -12,9 +12,9 @@
 
 | Source                                           | Link                                                                                                 |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Deploy Falcon Container Sensor Embedded in Image | https://falcon.crowdstrike.com/documentation/page/k58f1a5e                                           |
-| Retrieve Falcon Container Images from Registry   | https://falcon.crowdstrike.com/documentation/page/vc320402                                           |
-| Get Started with Falcon Container Sensor         | https://falcon.crowdstrike.com/documentation/page/e58b97e0                                           |
+| Deploy Falcon Container Sensor Embedded in Image | https://docs.crowdstrike.com/r/en-US/iopiipqy/k58f1a5e                                              |
+| Retrieve Falcon Container Images from Registry   | https://docs.crowdstrike.com/r/en-US/qg0ygdwl/vc320402                                              |
+| Get Started with Falcon Container Sensor         | https://docs.crowdstrike.com/r/en-US/iopiipqy/e58b97e0                                              |
 | falcon-container-sensor-pull.sh (GitHub)         | https://github.com/CrowdStrike/falcon-scripts/tree/main/bash/containers/falcon-container-sensor-pull |
 | CrowdStrike/falconutil-action (GitHub)           | https://github.com/CrowdStrike/falconutil-action                                                     |
 | Flask Quickstart                                 | https://flask.palletsprojects.com/en/stable/quickstart/                                              |
@@ -612,7 +612,7 @@ fi
 
 ## 10. Further Reading
 
-- [Deploy Falcon Container Sensor Embedded in Image](https://falcon.crowdstrike.com/documentation/page/k58f1a5e) — Full CrowdStrike documentation
+- [Deploy Falcon Container Sensor Embedded in Image](https://docs.crowdstrike.com/r/en-US/iopiipqy/k58f1a5e) — Full CrowdStrike documentation
 - [CrowdStrike/falconutil-action](https://github.com/CrowdStrike/falconutil-action) — GitHub Action for CI/CD pipelines
 - [falcon-container-sensor-pull.sh](https://github.com/CrowdStrike/falcon-scripts/tree/main/bash/containers/falcon-container-sensor-pull) — Pull script source and docs
 - [Flask Documentation](https://flask.palletsprojects.com/) — Flask framework reference

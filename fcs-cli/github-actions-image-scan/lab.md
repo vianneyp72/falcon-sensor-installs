@@ -3,7 +3,7 @@
 Scan container images for vulnerabilities in your CI/CD pipeline using the CrowdStrike FCS CLI via GitHub Actions. Only images that pass your Image Assessment Policy get pushed to the registry.
 
 Official GH: https://github.com/CrowdStrike/fcs-action
-Official Docs: https://falcon.crowdstrike.com/documentation/page/mac3b7b7
+Official Docs: https://docs.crowdstrike.com/r/en-US/qg0ygdwl/mac3b7b7
 
 > **Performance note:** The FCS CLI sends only package inventories to CrowdStrike for assessment — your image content never leaves the runner. Typical scan time is 30-90 seconds depending on image size and layer count.
 
@@ -19,9 +19,9 @@ Official Docs: https://falcon.crowdstrike.com/documentation/page/mac3b7b7
 | Source | Link |
 |--------|------|
 | CrowdStrike fcs-action | https://github.com/CrowdStrike/fcs-action |
-| Image Assessment with FCS CLI | https://falcon.crowdstrike.com/documentation/page/mac3b7b7 |
-| CI/CD Pipeline Integration | https://falcon.crowdstrike.com/documentation/page/wc4a46fa |
-| Shift Security Left | https://falcon.crowdstrike.com/documentation/page/eb7306b8 |
+| Image Assessment with FCS CLI | https://docs.crowdstrike.com/r/en-US/qg0ygdwl/mac3b7b7 |
+| CI/CD Pipeline Integration | https://docs.crowdstrike.com/r/en-US/qg0ygdwl/wc4a46fa |
+| Shift Security Left | https://docs.crowdstrike.com/r/en-US/qg0ygdwl/eb7306b8 |
 | GitHub Actions Encrypted Secrets | https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions |
 | GitHub Container Registry (ghcr.io) | https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry |
 

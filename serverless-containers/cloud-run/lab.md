@@ -18,8 +18,8 @@
 | Source                                           | Link                                                                                     |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | CrowdStrike falconutil-action                    | https://github.com/CrowdStrike/falconutil-action                                         |
-| Deploy Falcon Container Sensor on Cloud Run      | https://falcon.crowdstrike.com/documentation/page/p6af9353                               |
-| Deploy Falcon Container Sensor Embedded in Image | https://falcon.crowdstrike.com/documentation/page/k58f1a5e                               |
+| Deploy Falcon Container Sensor on Cloud Run      | https://docs.crowdstrike.com/r/en-US/iopiipqy/p6af9353                                   |
+| Deploy Falcon Container Sensor Embedded in Image | https://docs.crowdstrike.com/r/en-US/iopiipqy/k58f1a5e                                   |
 | GCP Artifact Registry Docker repos               | https://cloud.google.com/artifact-registry/docs/docker                                   |
 | GCP Workload Identity Federation for GitHub      | https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines |
 | GCP Cloud Run deployment                         | https://cloud.google.com/run/docs/deploying                                              |
