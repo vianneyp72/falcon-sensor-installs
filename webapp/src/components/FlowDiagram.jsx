@@ -480,12 +480,21 @@ function buildCloudRunPipelineDiagram(text) {
       position: { x: 40, y: 0 },
       data: { label: 'GitHub Actions Runner', isContainer: true },
       type: 'custom',
-      style: { width: 520, height: 220 },
+      style: { width: 520, height: 290 },
     },
     {
       id: 'sensor-image',
       position: { x: 170, y: 40 },
-      data: { label: 'Falcon Container Image', sublabel: 'falcon-container:latest' },
+      data: { label: 'Falcon Container Image', sublabel: 'contains falconutil' },
+      type: 'custom',
+      parentId: 'gh-runner',
+      extent: 'parent',
+      style: { width: 180, height: 55 },
+    },
+    {
+      id: 'original-image',
+      position: { x: 170, y: 130 },
+      data: { label: 'Original App Image', sublabel: 'app:1.0 from GAR' },
       type: 'custom',
       parentId: 'gh-runner',
       extent: 'parent',
@@ -493,7 +502,7 @@ function buildCloudRunPipelineDiagram(text) {
     },
     {
       id: 'wif-auth',
-      position: { x: 20, y: 140 },
+      position: { x: 20, y: 210 },
       data: { label: 'Auth to GCP', sublabel: 'WIF + GAR login' },
       type: 'custom',
       parentId: 'gh-runner',
@@ -501,17 +510,8 @@ function buildCloudRunPipelineDiagram(text) {
       style: { width: 130, height: 55 },
     },
     {
-      id: 'falconutil',
-      position: { x: 190, y: 140 },
-      data: { label: 'falconutil', sublabel: 'patch-image' },
-      type: 'custom',
-      parentId: 'gh-runner',
-      extent: 'parent',
-      style: { width: 130, height: 55 },
-    },
-    {
       id: 'push-patched',
-      position: { x: 365, y: 140 },
+      position: { x: 365, y: 130 },
       data: { label: 'Push patched', sublabel: 'image to GAR' },
       type: 'custom',
       parentId: 'gh-runner',
@@ -521,7 +521,7 @@ function buildCloudRunPipelineDiagram(text) {
     // GAR
     {
       id: 'gar',
-      position: { x: 60, y: 270 },
+      position: { x: 60, y: 340 },
       data: {
         label: 'Google Artifact Registry',
         sublabel: 'app:1.0 / app:1.0-falcon',
@@ -533,7 +533,7 @@ function buildCloudRunPipelineDiagram(text) {
     // Cloud Run
     {
       id: 'cloud-run',
-      position: { x: 180, y: 390 },
+      position: { x: 180, y: 460 },
       data: { label: 'Google Cloud Run', sublabel: 'falcon-sensor + your app', isCloud: true },
       type: 'custom',
       style: { width: 240, height: 55 },
@@ -541,9 +541,8 @@ function buildCloudRunPipelineDiagram(text) {
   ]
 
   const edges = [
-    { id: 'e-sensor-patch', source: 'sensor-image', target: 'falconutil', label: 'sensor layer', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
-    { id: 'e-auth-patch', source: 'wif-auth', target: 'falconutil', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
-    { id: 'e-patch-push', source: 'falconutil', target: 'push-patched', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
+    { id: 'e-sensor-patch', source: 'sensor-image', target: 'original-image', label: 'falconutil patch-image', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
+    { id: 'e-patch-push', source: 'original-image', target: 'push-patched', label: 'patched', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
     { id: 'e-push-gar', source: 'push-patched', target: 'gar', label: 'docker push', type: 'smoothstep', animated: true, style: { stroke: '#d29922', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#d29922' } },
     { id: 'e-wif-gar', source: 'gar', target: 'gh-runner', label: 'WIF (OIDC)', type: 'smoothstep', style: { stroke: '#61C4C9', strokeWidth: 1, strokeDasharray: '4 3' }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
     { id: 'e-gar-run', source: 'gar', target: 'cloud-run', label: 'Deploy :*-falcon', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
