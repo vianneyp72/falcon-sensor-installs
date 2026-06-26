@@ -477,75 +477,80 @@ function buildCloudRunPipelineDiagram(text) {
     // GitHub Actions Runner container
     {
       id: 'gh-runner',
-      position: { x: 40, y: 0 },
+      position: { x: 0, y: 0 },
       data: { label: 'GitHub Actions Runner', isContainer: true },
       type: 'custom',
-      style: { width: 520, height: 290 },
+      style: { width: 620, height: 280 },
     },
     {
       id: 'sensor-image',
-      position: { x: 170, y: 40 },
-      data: { label: 'Falcon Container Image', sublabel: 'contains falconutil' },
+      position: { x: 190, y: 40 },
+      data: { label: 'Falcon Container Image', sublabel: 'falcon-container:latest' },
       type: 'custom',
       parentId: 'gh-runner',
       extent: 'parent',
-      style: { width: 180, height: 55 },
-    },
-    {
-      id: 'original-image',
-      position: { x: 170, y: 130 },
-      data: { label: 'Original App Image', sublabel: 'app:1.0 from GAR' },
-      type: 'custom',
-      parentId: 'gh-runner',
-      extent: 'parent',
-      style: { width: 180, height: 55 },
+      style: { width: 230, height: 55 },
     },
     {
       id: 'wif-auth',
-      position: { x: 20, y: 210 },
-      data: { label: 'Auth to GCP', sublabel: 'WIF + GAR login' },
+      position: { x: 20, y: 160 },
+      data: { label: 'Auth to GCP', sublabel: 'WIF + GAR' },
       type: 'custom',
       parentId: 'gh-runner',
       extent: 'parent',
       style: { width: 130, height: 55 },
     },
     {
-      id: 'push-patched',
-      position: { x: 365, y: 130 },
-      data: { label: 'Push patched', sublabel: 'image to GAR' },
+      id: 'falconutil',
+      position: { x: 200, y: 160 },
+      data: { label: 'falconutil patch-image', sublabel: 'app:1.0 → app:1.0-falcon' },
       type: 'custom',
       parentId: 'gh-runner',
       extent: 'parent',
-      style: { width: 130, height: 55 },
+      style: { width: 230, height: 55 },
+    },
+    {
+      id: 'push-patched',
+      position: { x: 470, y: 160 },
+      data: { label: 'docker push', sublabel: 'app:1.0-falcon → GAR' },
+      type: 'custom',
+      parentId: 'gh-runner',
+      extent: 'parent',
+      style: { width: 135, height: 55 },
     },
     // GAR
     {
       id: 'gar',
-      position: { x: 60, y: 340 },
+      position: { x: 50, y: 380 },
       data: {
-        label: 'Google Artifact Registry',
-        sublabel: 'app:1.0 / app:1.0-falcon',
+        label: 'Google Artifact Registry (GAR)',
+        sublabel: 'app:1.0 | app:1.0-falcon | falcon-container:latest',
         isContainer: true,
       },
       type: 'custom',
-      style: { width: 480, height: 70 },
+      style: { width: 520, height: 70 },
     },
     // Cloud Run
     {
       id: 'cloud-run',
-      position: { x: 180, y: 460 },
-      data: { label: 'Google Cloud Run', sublabel: 'falcon-sensor + your app', isCloud: true },
+      position: { x: 190, y: 510 },
+      data: { label: 'Google Cloud Run (gen2)', sublabel: 'falcon-sensor + your app', isCloud: true },
       type: 'custom',
       style: { width: 240, height: 55 },
     },
   ]
 
   const edges = [
-    { id: 'e-sensor-patch', source: 'sensor-image', target: 'original-image', label: 'falconutil patch-image', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
-    { id: 'e-patch-push', source: 'original-image', target: 'push-patched', label: 'patched', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
-    { id: 'e-push-gar', source: 'push-patched', target: 'gar', label: 'docker push', type: 'smoothstep', animated: true, style: { stroke: '#d29922', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#d29922' } },
-    { id: 'e-wif-gar', source: 'gar', target: 'gh-runner', label: 'WIF (OIDC)', type: 'smoothstep', style: { stroke: '#61C4C9', strokeWidth: 1, strokeDasharray: '4 3' }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
-    { id: 'e-gar-run', source: 'gar', target: 'cloud-run', label: 'Deploy :*-falcon', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
+    // Auth → falconutil (right to left, horizontal pipeline)
+    { id: 'e-auth-patch', source: 'wif-auth', sourceHandle: 'right-source', target: 'falconutil', targetHandle: 'left-target', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
+    // falconutil → docker push (right to left, horizontal pipeline)
+    { id: 'e-patch-push', source: 'falconutil', sourceHandle: 'right-source', target: 'push-patched', targetHandle: 'left-target', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
+    // Sensor image feeds into falconutil
+    { id: 'e-sensor-patch', source: 'sensor-image', target: 'falconutil', label: 'sensor layers', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
+    // Push sends patched image down to GAR
+    { id: 'e-push-gar', source: 'push-patched', target: 'gar', label: 'push :1.0-falcon', type: 'smoothstep', animated: true, style: { stroke: '#d29922', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#d29922' } },
+    // GAR deploys to Cloud Run
+    { id: 'e-gar-run', source: 'gar', target: 'cloud-run', label: 'Deploy :*-falcon only', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
   ]
 
   return { nodes, edges }
