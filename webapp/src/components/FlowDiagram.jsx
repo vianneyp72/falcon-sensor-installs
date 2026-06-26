@@ -346,13 +346,14 @@ function findEdgeLabel(lines, row, col) {
 
 // Custom node component
 function CustomNode({ data }) {
-  const { label, isContainer, isSubSection, isCloud, isPhase, isApi, sublabel, items } = data
+  const { label, isContainer, isSubSection, isCloud, isPhase, isApi, isDanger, sublabel, items } = data
   const lines = label.split('\n').filter(l => l.trim())
 
   const containerClass = [
     'flow-node',
     isContainer ? 'flow-node--container' : '',
     isCloud ? 'flow-node--cloud' : '',
+    isDanger ? 'flow-node--danger' : '',
     isPhase ? 'flow-node--phase' : '',
     isApi ? 'flow-node--api' : '',
     isSubSection ? 'flow-node--sectioned' : '',
@@ -689,8 +690,126 @@ function buildFcsImageScanDiagram(text) {
   return { nodes, edges }
 }
 
+function buildK8sDaemonsetDiagram(text) {
+  const nodes = [
+    // Kubernetes Cluster container
+    {
+      id: 'cluster',
+      position: { x: 0, y: 0 },
+      data: { label: 'Kubernetes Cluster', isContainer: true },
+      type: 'custom',
+      style: { width: 820, height: 540 },
+    },
+    // 3 tall Node columns (rendered first = behind everything else)
+    {
+      id: 'node1',
+      position: { x: 25, y: 55 },
+      data: { label: 'Node 1', isContainer: true },
+      type: 'custom',
+      parentId: 'cluster',
+      extent: 'parent',
+      style: { width: 240, height: 460 },
+    },
+    {
+      id: 'node2',
+      position: { x: 290, y: 55 },
+      data: { label: 'Node 2', isContainer: true },
+      type: 'custom',
+      parentId: 'cluster',
+      extent: 'parent',
+      style: { width: 240, height: 460 },
+    },
+    {
+      id: 'node3',
+      position: { x: 555, y: 55 },
+      data: { label: 'Node 3', isContainer: true },
+      type: 'custom',
+      parentId: 'cluster',
+      extent: 'parent',
+      style: { width: 240, height: 460 },
+    },
+    // DaemonSet band — spans all 3 nodes, contains 3 sensor pods
+    {
+      id: 'daemonset',
+      position: { x: 35, y: 100 },
+      data: { label: 'DaemonSet — 1 pod per node', isContainer: true, isPhase: true },
+      type: 'custom',
+      parentId: 'cluster',
+      extent: 'parent',
+      style: { width: 750, height: 130 },
+    },
+    {
+      id: 'sensor1',
+      position: { x: 25, y: 50 },
+      data: { label: 'falcon-sensor', sublabel: 'DaemonSet pod' },
+      type: 'custom',
+      parentId: 'daemonset',
+      extent: 'parent',
+      style: { width: 190, height: 55 },
+    },
+    {
+      id: 'sensor2',
+      position: { x: 280, y: 50 },
+      data: { label: 'falcon-sensor', sublabel: 'DaemonSet pod' },
+      type: 'custom',
+      parentId: 'daemonset',
+      extent: 'parent',
+      style: { width: 190, height: 55 },
+    },
+    {
+      id: 'sensor3',
+      position: { x: 535, y: 50 },
+      data: { label: 'falcon-sensor', sublabel: 'DaemonSet pod' },
+      type: 'custom',
+      parentId: 'daemonset',
+      extent: 'parent',
+      style: { width: 190, height: 55 },
+    },
+    // Falcon Image Analyzer — wide band spanning all 3 nodes
+    {
+      id: 'iar',
+      position: { x: 35, y: 270 },
+      data: { label: 'Falcon Image Analyzer', sublabel: 'Deployment (1 replica) — Image Assessment' },
+      type: 'custom',
+      parentId: 'cluster',
+      extent: 'parent',
+      style: { width: 750, height: 70 },
+    },
+    // Falcon KAC — wide band spanning all 3 nodes
+    {
+      id: 'kac',
+      position: { x: 35, y: 380 },
+      data: { label: 'Falcon KAC', sublabel: 'Deployment (1 replica) — Admission Controller' },
+      type: 'custom',
+      parentId: 'cluster',
+      extent: 'parent',
+      style: { width: 750, height: 70 },
+    },
+    // CrowdStrike Cloud — outside cluster, pushed down for spacing
+    {
+      id: 'cs-cloud',
+      position: { x: 280, y: 700 },
+      data: { label: 'CrowdStrike Cloud', sublabel: 'Telemetry & Detections', isDanger: true },
+      type: 'custom',
+      style: { width: 230, height: 60 },
+    },
+  ]
+
+  const edges = [
+    // Sensors → CrowdStrike Cloud (dashed green lines converge naturally)
+    { id: 'e-s1-cloud', source: 'sensor1', target: 'cs-cloud', type: 'smoothstep', style: { stroke: '#f85149', strokeWidth: 1.5, strokeDasharray: '5 4' } },
+    { id: 'e-s2-cloud', source: 'sensor2', target: 'cs-cloud', label: 'TLS 443', type: 'smoothstep', animated: true, style: { stroke: '#f85149', strokeWidth: 1.5, strokeDasharray: '5 4' }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#f85149' } },
+    { id: 'e-s3-cloud', source: 'sensor3', target: 'cs-cloud', type: 'smoothstep', style: { stroke: '#f85149', strokeWidth: 1.5, strokeDasharray: '5 4' } },
+  ]
+
+  return { nodes, edges }
+}
+
 function buildDiagramFromContent(text) {
   // Detect which diagram this is based on content — order matters (specific before generic)
+  if (text.includes('FALCON PLATFORM HELM DEPLOYMENT') && text.includes('DaemonSet: 1 pod per node')) {
+    return buildK8sDaemonsetDiagram(text)
+  }
   if (text.includes('AWS Organization') && text.includes('HOST ACCOUNT') && text.includes('IOM Assessment')) {
     return buildCspmAwsOrgDiagram(text)
   }
@@ -1109,6 +1228,9 @@ function buildDockerPatchDiagram(text) {
 }
 
 export function isAsciiDiagram(text) {
+  // Named diagram patterns (no box-drawing chars needed)
+  if (text.includes('FALCON PLATFORM HELM DEPLOYMENT') && text.includes('DaemonSet: 1 pod per node')) return true
+
   const boxChars = /[┌┐└┘│├┤─┬┴┼]/
   const lines = text.split('\n')
   const boxLines = lines.filter(l => boxChars.test(l))

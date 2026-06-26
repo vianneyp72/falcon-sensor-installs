@@ -216,6 +216,24 @@
   color: #3fb950;
 }
 
+/* Danger/red variant */
+.flow-node--danger {
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+.flow-node--danger::before {
+  background: rgba(248, 81, 73, 0.12);
+  border-color: rgba(248, 81, 73, 0.35);
+}
+
+.flow-node--danger .flow-node__title {
+  color: #f85149;
+}
+
+.flow-node--danger .flow-node__subtitle {
+  color: rgba(248, 81, 73, 0.7);
+}
+
 /* Phase container variant - dashed purple outline */
 .flow-node--phase {
   background: transparent;

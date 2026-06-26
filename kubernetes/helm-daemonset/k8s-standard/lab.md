@@ -12,6 +12,15 @@ Official Docs: https://docs.crowdstrike.com/r/en-US/qg0ygdwl/l303c850
 - **Falcon KAC** (Deployment) - Kubernetes Admission Controller
 - **Falcon Image Analyzer** (Deployment) - Container image scanning
 
+```
+KUBERNETES CLUSTER — FALCON PLATFORM HELM DEPLOYMENT
+DaemonSet: 1 pod per node | Deployment: 1 pod per cluster
+Node 1: falcon-sensor | Node 2: falcon-sensor | Node 3: falcon-sensor
+Falcon KAC (Deployment) — Admission Controller
+Falcon Image Analyzer (Deployment) — Image Assessment
+CrowdStrike Cloud — Telemetry
+```
+
 ## Prerequisites
 
 - Kubernetes cluster running (EKS, GKE Standard, AKS, kubeadm, Rancher, k3s, etc.)
