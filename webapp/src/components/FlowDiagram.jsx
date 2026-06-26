@@ -815,92 +815,102 @@ function buildCspmAwsOrgDiagram(text) {
 function buildAnsibleDiagram(text) {
   const nodes = [
     {
-      id: 'workstation',
-      position: { x: 180, y: 0 },
-      data: {
-        label: 'Your Workstation',
-        sublabel: 'Ansible Control Node',
-        isContainer: true,
-      },
-      type: 'custom',
-      style: { width: 340, height: 180 },
-    },
-    {
-      id: 'falcon-install',
-      position: { x: 20, y: 55 },
-      data: {
-        label: 'falcon_install',
-        sublabel: 'Downloads & installs sensor',
-      },
-      type: 'custom',
-      parentId: 'workstation',
-      extent: 'parent',
-      style: { width: 300, height: 50 },
-    },
-    {
-      id: 'falcon-configure',
-      position: { x: 20, y: 115 },
-      data: {
-        label: 'falcon_configure',
-        sublabel: 'Sets CID, tags & starts service',
-      },
-      type: 'custom',
-      parentId: 'workstation',
-      extent: 'parent',
-      style: { width: 300, height: 50 },
-    },
-    {
       id: 'falcon-api',
-      position: { x: 560, y: 60 },
+      position: { x: 240, y: 0 },
       data: {
         label: 'Falcon API',
         sublabel: 'api.crowdstrike.com',
         isApi: true,
       },
       type: 'custom',
-      style: { width: 160, height: 55 },
+      style: { width: 180, height: 55 },
+    },
+    {
+      id: 'workstation',
+      position: { x: 140, y: 120 },
+      data: {
+        label: 'Your Workstation',
+        sublabel: 'Ansible Control Node',
+        isContainer: true,
+      },
+      type: 'custom',
+      style: { width: 380, height: 180 },
+    },
+    {
+      id: 'falcon-install',
+      position: { x: 20, y: 50 },
+      data: {
+        label: 'falcon_install',
+        sublabel: 'Downloads .deb/.rpm from API',
+      },
+      type: 'custom',
+      parentId: 'workstation',
+      extent: 'parent',
+      style: { width: 170, height: 55 },
+    },
+    {
+      id: 'falcon-configure',
+      position: { x: 200, y: 50 },
+      data: {
+        label: 'falcon_configure',
+        sublabel: 'Sets CID + tags, starts service',
+      },
+      type: 'custom',
+      parentId: 'workstation',
+      extent: 'parent',
+      style: { width: 170, height: 55 },
+    },
+    {
+      id: 'deb-pkg',
+      position: { x: 100, y: 120 },
+      data: {
+        label: 'falcon-sensor_7.x_amd64.deb',
+        sublabel: 'Cached locally by role',
+      },
+      type: 'custom',
+      parentId: 'workstation',
+      extent: 'parent',
+      style: { width: 200, height: 45 },
     },
     {
       id: 'deb12',
-      position: { x: 120, y: 290 },
+      position: { x: 60, y: 400 },
       data: {
         label: 'falcon-linux-deb-12',
         sublabel: 'Debian 12 Bookworm',
       },
       type: 'custom',
-      style: { width: 170, height: 55 },
+      style: { width: 180, height: 55 },
     },
     {
       id: 'deb13',
-      position: { x: 410, y: 290 },
+      position: { x: 420, y: 400 },
       data: {
         label: 'falcon-linux-deb-13',
         sublabel: 'Debian 13 Trixie',
       },
       type: 'custom',
-      style: { width: 170, height: 55 },
+      style: { width: 180, height: 55 },
     },
     {
       id: 'cloud',
-      position: { x: 260, y: 410 },
+      position: { x: 230, y: 530 },
       data: {
         label: 'CrowdStrike Cloud',
         sublabel: 'Telemetry & detections',
         isCloud: true,
       },
       type: 'custom',
-      style: { width: 180, height: 55 },
+      style: { width: 200, height: 55 },
     },
   ]
 
   const edges = [
-    // Workstation authenticates to Falcon API
-    { id: 'e-api', source: 'workstation', target: 'falcon-api', label: 'OAuth2', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
-    // Falcon API returns sensor download + CID
-    { id: 'e-api-back', source: 'falcon-api', target: 'workstation', label: 'Sensor pkg + CID', type: 'smoothstep', style: { stroke: '#a371f7', strokeWidth: 1, strokeDasharray: '4 3' }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
-    // Workstation deploys to VMs via SSH
-    { id: 'e-ssh1', source: 'workstation', target: 'deb12', label: 'SSH', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
-    { id: 'e-ssh2', source: 'workstation', target: 'deb13', label: 'SSH', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
+    // Falcon API sends .deb down to workstation
+    { id: 'e-api-down', source: 'falcon-api', target: 'workstation', label: 'OAuth2 → .deb + CID', type: 'smoothstep', animated: true, style: { stroke: '#a371f7', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#a371f7' } },
+    // Workstation pushes .deb to VMs via SSH
+    { id: 'e-ssh1', source: 'workstation', target: 'deb12', label: 'SSH: copy .deb + install', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
+    { id: 'e-ssh2', source: 'workstation', target: 'deb13', label: 'SSH: copy .deb + install', type: 'smoothstep', animated: true, style: { stroke: '#61C4C9', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#61C4C9' } },
     // VMs report telemetry to CrowdStrike Cloud
     { id: 'e-telem1', source: 'deb12', target: 'cloud', label: 'HTTPS/443', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
     { id: 'e-telem2', source: 'deb13', target: 'cloud', label: 'HTTPS/443', type: 'smoothstep', animated: true, style: { stroke: '#3fb950', strokeWidth: 1.5 }, labelStyle: { fill: 'rgba(180,180,195,0.8)', fontSize: 10 }, markerEnd: { type: 'arrowclosed', color: '#3fb950' } },
