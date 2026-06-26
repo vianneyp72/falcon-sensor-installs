@@ -37,6 +37,11 @@ export default function TableOfContents({ headings }) {
           <a
             key={id}
             href={`#${id}`}
+            onClick={(e) => {
+              e.preventDefault()
+              const el = document.getElementById(id)
+              if (el) el.scrollIntoView({ behavior: 'smooth' })
+            }}
             className={`toc-link ${level === 3 ? 'toc-link--nested' : ''} ${activeId === id ? 'toc-link--active' : ''}`}
           >
             {text}

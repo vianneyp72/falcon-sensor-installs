@@ -6,7 +6,7 @@
   max-width: calc(var(--content-max) + var(--toc-width) + 4rem);
   width: 100%;
   margin: 0 auto;
-  overflow-x: hidden;
+  overflow-x: clip;
   position: relative;
 }
 
@@ -482,6 +482,12 @@
 
 /* Mode toggle (Guide / Lab) */
 .mode-toggle-wrapper {
+  position: sticky;
+  top: var(--nav-height);
+  z-index: 10;
+  background: var(--bg, #17181c);
+  padding-top: 1rem;
+  padding-bottom: 0.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
