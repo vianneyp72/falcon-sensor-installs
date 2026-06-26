@@ -80,6 +80,19 @@ The `falconutil patch-image` command:
 
 ## 2. Prerequisites & Setup
 
+<div data-mode="guide">
+
+```bash
+export FALCON_CLIENT_ID="<your_client_id>"
+export FALCON_CLIENT_SECRET="<your_client_secret>"
+export FALCON_CID="<your_cid_with_checksum>"
+export FALCON_CLOUD="<YOUR_FALCON_CLOUD>"
+```
+
+</div>
+
+<div data-mode="lab">
+
 > **~5 min | Beginner**
 
 ### Step 1: Verify Docker is Running
@@ -98,7 +111,7 @@ You should see output showing the Docker server version and runtime details. If 
 
 > **What & Why:** The pull script authenticates to the CrowdStrike container registry using OAuth2 credentials. Without these, you can't download the Falcon sensor image.
 
-- [ ] In the Falcon console, navigate to: **Support and resources** → **Resources and tools** → **API clients and keys**
+- [ ] In the Falcon console, navigate to: **Support and resources** > **Resources and tools** > **API clients and keys**
 - [ ] Click **Create API client** with these scopes:
   - **Falcon Images Download**: Read
   - **Sensor Download**: Read
@@ -119,9 +132,19 @@ export FALCON_CLOUD="<YOUR_FALCON_CLOUD>"
 
 > **What to look for:** Run `echo $FALCON_CLIENT_ID` to confirm the variable is set. You should see your client ID, not an empty line.
 
+</div>
+
 ---
 
 ## 3. Build the Flask App
+
+<div data-mode="guide">
+
+Assumes you already have a container image built and tagged locally (e.g., `flask-hello:original`). Skip to the next section.
+
+</div>
+
+<div data-mode="lab">
 
 > **~10 min | Beginner**
 
@@ -249,9 +272,23 @@ You should see only the Python/Flask process — no sensor yet.
 docker stop flask-original && docker rm flask-original
 ```
 
+</div>
+
 ---
 
 ## 4. Pull the Falcon Container Sensor
+
+<div data-mode="guide">
+
+```bash
+export LATESTSENSOR=$(curl -sSL "https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/containers/falcon-container-sensor-pull/falcon-container-sensor-pull.sh" | /bin/bash -s -- -t falcon-container --platform x86_64 | tail -1)
+
+echo "FROM $LATESTSENSOR" | docker buildx build --platform linux/amd64 -t falcon-sensor:amd64 --load -
+```
+
+</div>
+
+<div data-mode="lab">
 
 > **~10 min | Beginner**
 
@@ -304,9 +341,29 @@ falcon-sensor:amd64                    ...
 └─ linux/amd64                         ...
 ```
 
+</div>
+
 ---
 
 ## 5. Patch the Image
+
+<div data-mode="guide">
+
+```bash
+docker run --platform linux/amd64 --user 0:0 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --rm falcon-sensor:amd64 \
+  falconutil patch-image \
+  --source-image-uri flask-hello:original \
+  --target-image-uri flask-hello:patched \
+  --falcon-image-uri falcon-sensor:amd64 \
+  --cid $FALCON_CID \
+  --image-pull-policy IfNotPresent
+```
+
+</div>
+
+<div data-mode="lab">
 
 > **~10 min | Beginner**
 
@@ -352,9 +409,23 @@ flask-hello   original  abc123...      5 minutes ago    ~150MB
 
 Notice the patched image is larger — that's the sensor binaries that were injected.
 
+</div>
+
 ---
 
 ## 6. Run the Patched Image
+
+<div data-mode="guide">
+
+Verify the patched image has the Falcon entrypoint:
+
+```bash
+docker inspect flask-hello:patched --format '{{.Config.Entrypoint}}'
+```
+
+</div>
+
+<div data-mode="lab">
 
 > **~10 min | Beginner**
 
@@ -435,6 +506,8 @@ Look for lines indicating the sensor started successfully.
 docker stop flask-patched && docker rm flask-patched
 ```
 
+</div>
+
 ---
 
 ## 7. Verify in Falcon Console
@@ -445,7 +518,7 @@ docker stop flask-patched && docker rm flask-patched
 
 > **What & Why:** The ultimate verification — your container should appear as a managed host in the Falcon console, proving end-to-end connectivity.
 
-- [ ] In the Falcon console, navigate to: **Host setup and management** → **Host management**
+- [ ] In the Falcon console, navigate to: **Host setup and management** > **Host management**
 - [ ] Search for your container by its AID or hostname
 - [ ] You should see it listed with the container's hostname and sensor version
 

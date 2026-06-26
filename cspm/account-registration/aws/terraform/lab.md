@@ -70,18 +70,65 @@ When you register an AWS Organization with Falcon Cloud Security, the Terraform 
 
 ---
 
+## Deployment Steps
+
+<div data-mode="guide">
+
+### 1. Set API Credentials
+
+```bash
+export FALCON_CLIENT_ID="<your-client-id>"
+export FALCON_CLIENT_SECRET="<your-client-secret>"
+export TF_VAR_falcon_client_id="$FALCON_CLIENT_ID"
+export TF_VAR_falcon_client_secret="$FALCON_CLIENT_SECRET"
+```
+
+### 2. Configure Terraform Variables
+
+Edit `terraform.tfvars` with your organization details:
+
+```hcl
+organization_id = "o-xxxxxxxxxx"
+primary_region  = "us-east-1"
+account_id      = "<host-account-id>"
+```
+
+### 3. Deploy
+
+```bash
+cd ~/projects/falcon-sensor-installs-workspace/cspm/account-registration/aws/terraform
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+For member accounts, repeat with `is_host_account=false`:
+
+```bash
+terraform workspace new <account-name> 2>/dev/null || terraform workspace select <account-name>
+terraform apply -var="account_id=<member-account-id>" -var="is_host_account=false"
+```
+
+### 4. Verify
+
+Navigate to **Falcon Console** > **Cloud security** > **Registration** and confirm all accounts show **IOM status: Active**.
+
+</div>
+
+<div data-mode="lab">
+
 ## 2. Create Falcon API Credentials
 
 > **~10 min | Intermediate**
 
 > **What & Why:** The CrowdStrike Terraform provider authenticates via OAuth2 API credentials. These credentials allow Terraform to look up your account's registration details (external ID, intermediate role ARN) and configure the module automatically.
 
-- [ ] **Console:** Navigate to **Falcon Console** → **Support and resources** → **Resources and tools** → **API clients and keys**
+- [ ] **Console:** Navigate to **Falcon Console** > **Support and resources** > **Resources and tools** > **API clients and keys**
 
 - [ ] Click **Create API client** and configure:
   - Client name: `terraform-cspm-registration`
   - Description: `Terraform automation for CSPM account registration`
-  - Scope: Check **CSPM Registration** → enable both **Read** and **Write**
+  - Scope: Check **CSPM Registration** > enable both **Read** and **Write**
 
 - [ ] Copy the **Client ID** and **Client Secret** — you'll need these for Terraform variables
 
@@ -102,9 +149,9 @@ export FALCON_CLIENT_SECRET="<your-client-secret>"
 
 > **What & Why:** Before Terraform can deploy infrastructure, you must initiate the registration in the Falcon console. This tells CrowdStrike about your AWS Organization and generates the configuration (external IDs, role names) that Terraform will reference.
 
-- [ ] **Console:** Navigate to **Falcon Console** → **Cloud security** → **Registration** → **AWS**
+- [ ] **Console:** Navigate to **Falcon Console** > **Cloud security** > **Registration** > **AWS**
 
-- [ ] Click **Register new account** → Select **Register an organization**
+- [ ] Click **Register new account** > Select **Register an organization**
 
 - [ ] Enter your organization details:
   - Organization ID: (auto-detected or enter manually)
@@ -302,7 +349,7 @@ terraform apply -var="account_id=019313283882" -var="is_host_account=false"
 
 > **What & Why:** After Terraform deploys the IAM roles, CrowdStrike begins discovering resources and running IOM assessments. Verification confirms the trust relationship is working correctly.
 
-- [ ] **Console:** Navigate to **Falcon Console** → **Cloud security** → **Registration**
+- [ ] **Console:** Navigate to **Falcon Console** > **Cloud security** > **Registration**
 
 - [ ] Verify all 4 accounts show with **IOM status: Active**:
 
@@ -313,7 +360,7 @@ terraform apply -var="account_id=019313283882" -var="is_host_account=false"
 | Production | 517728567948 | Active |
 | Sandbox | 019313283882 | Active |
 
-- [ ] Navigate to **Cloud security** → **Dashboards** → **Cloud posture**
+- [ ] Navigate to **Cloud security** > **Dashboards** > **Cloud posture**
 
 - [ ] Check that IOMs are populating (may take 5-15 minutes for first scan):
   - Misconfigurations should start appearing grouped by severity
@@ -404,7 +451,7 @@ terraform apply -var="account_id=${NEW_ACCOUNT_ID}" -var="is_host_account=false"
 
 ### Step 3: Verify the new account
 
-- [ ] **Console:** Navigate to **Cloud security** → **Registration** → verify the new account appears with **Active** status
+- [ ] **Console:** Navigate to **Cloud security** > **Registration** > verify the new account appears with **Active** status
 
 - [ ] IOMs should begin populating within 5-15 minutes for the new account
 
@@ -474,7 +521,7 @@ aws iam attach-role-policy \
 
 ### Step 2: Add secrets to GitHub repository
 
-- [ ] Navigate to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
+- [ ] Navigate to your GitHub repository > **Settings** > **Secrets and variables** > **Actions**
 
 - [ ] Add the following repository secrets:
 
@@ -692,7 +739,39 @@ The pipeline will automatically deploy to the new account on merge to `main`.
 
 ---
 
-## 9. Optional Features
+## 9. Cleanup
+
+> **~5 min | Intermediate**
+
+> **What & Why:** Destroy resources in reverse order — member accounts first, then host. This avoids dependency errors where member accounts reference host account role IDs.
+
+- [ ] Destroy member accounts first:
+
+```bash
+cd ~/projects/falcon-sensor-installs-workspace/cspm/account-registration/aws/terraform
+
+for ws in development production sandbox; do
+  terraform workspace select $ws
+  terraform destroy -auto-approve -var="account_id=<account-id>" -var="is_host_account=false"
+done
+```
+
+- [ ] Then destroy the host account:
+
+```bash
+terraform workspace select default
+terraform destroy -auto-approve
+```
+
+- [ ] Deregister from Falcon Console:
+  - Navigate to **Cloud security** > **Registration**
+  - Select all accounts > **Actions** > **Delete**
+
+</div>
+
+---
+
+## 10. Optional Features
 
 > The following features can be enabled by changing variables in `terraform.tfvars`. Each adds additional AWS resources beyond the base IAM reader role.
 
@@ -802,36 +881,6 @@ dspm_ebs_access      = true
 
 ---
 
-## 10. Cleanup
-
-> **~5 min | Intermediate**
-
-> **What & Why:** Destroy resources in reverse order — member accounts first, then host. This avoids dependency errors where member accounts reference host account role IDs.
-
-- [ ] Destroy member accounts first:
-
-```bash
-cd ~/projects/falcon-sensor-installs-workspace/cspm/account-registration/aws/terraform
-
-for ws in development production sandbox; do
-  terraform workspace select $ws
-  terraform destroy -auto-approve -var="account_id=<account-id>" -var="is_host_account=false"
-done
-```
-
-- [ ] Then destroy the host account:
-
-```bash
-terraform workspace select default
-terraform destroy -auto-approve
-```
-
-- [ ] Deregister from Falcon Console:
-  - Navigate to **Cloud security** → **Registration**
-  - Select all accounts → **Actions** → **Delete**
-
----
-
 ## 11. Challenges
 
 ### Challenge 1: Drift Detection Workflow
@@ -933,7 +982,7 @@ Add this step to the `plan` job after `terraform plan`:
             })
 ```
 
-Then in GitHub → Settings → Branches → Add rule for `main`:
+Then in GitHub > Settings > Branches > Add rule for `main`:
 - Require PR before merge
 - Require status checks: all `plan` jobs must pass
 

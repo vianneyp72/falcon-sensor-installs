@@ -42,7 +42,53 @@ GitHub Actions Runner ── fcs-action ── Image Assessment
 
 ---
 
-## 1. Create the Demo Flask App
+## Deployment Steps
+
+<div data-mode="guide">
+
+### 1. Add CrowdStrike Secrets to GitHub Repo
+
+Navigate to your repo > **Settings** > **Secrets and variables** > **Actions** and add:
+
+| Type | Name | Value |
+|------|------|-------|
+| Secret | `FALCON_CLIENT_SECRET` | Your CrowdStrike API client secret |
+| Variable | `FALCON_CLIENT_ID` | Your CrowdStrike API client ID |
+| Variable | `FALCON_REGION` | Your CrowdStrike cloud (e.g., `us-1`) |
+
+### 2. Add the `fcs-action` Step to Your Workflow
+
+Add this step after your `docker build` step:
+
+```yaml
+      - name: CrowdStrike FCS Image Scan
+        uses: crowdstrike/fcs-action@v4
+        with:
+          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: ${{ vars.FALCON_REGION }}
+          scan_type: image
+          image: <your-image>:<tag>
+          report_formats: json
+          output_path: ./fcs-results.json
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+```
+
+### 3. Push and Check Results
+
+```bash
+git add .github/workflows/<your-workflow>.yml
+git commit -m "add fcs-action image scan"
+git push
+```
+
+Check results in **Actions** tab or in the Falcon console under **Cloud Security** > **Image Assessment** > **CI Images**.
+
+</div>
+
+<div data-mode="lab">
+
+### 1. Create the Demo Flask App
 
 > **~10 min | Beginner**
 
@@ -54,7 +100,7 @@ Create a new directory for the project:
 mkdir fcs-scan-demo && cd fcs-scan-demo
 ```
 
-### app.py
+#### app.py
 
 ```python
 from flask import Flask
@@ -69,7 +115,7 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
 ```
 
-### requirements.txt (intentionally vulnerable)
+#### requirements.txt (intentionally vulnerable)
 
 ```
 flask==2.3.2
@@ -79,7 +125,7 @@ jinja2==3.1.2
 
 > **What this does:** These pinned versions contain known CVEs (e.g., Werkzeug 2.3.3 has GHSA-2g68-c3qc-8985). This ensures the scanner has findings to report when we test the "fail" case.
 
-### Dockerfile
+#### Dockerfile
 
 ```dockerfile
 FROM python:3.11-slim
@@ -93,7 +139,7 @@ EXPOSE 5000
 CMD ["python", "app.py"]
 ```
 
-### Verify the build locally
+#### Verify the build locally
 
 ```bash
 docker build -t fcs-scan-demo:local .
@@ -103,13 +149,13 @@ docker run --rm -p 5000:5000 fcs-scan-demo:local
 
 ---
 
-## 2. Create the GitHub Repository
+### 2. Create the GitHub Repository
 
 > **~10 min | Beginner**
 
 > **What & Why:** The GitHub Actions workflow runs on push events in this repo. We also need to configure the CrowdStrike API credentials as repository secrets.
 
-### Initialize and push
+#### Initialize and push
 
 ```bash
 git init
@@ -123,7 +169,7 @@ Create the repo on GitHub (using `gh` CLI or the web UI):
 gh repo create fcs-scan-demo --private --source=. --push
 ```
 
-### Configure secrets
+#### Configure secrets
 
 Add your CrowdStrike API credentials as repository secrets:
 
@@ -139,7 +185,7 @@ gh variable set FALCON_REGION --body "us-1"
 
 ---
 
-## 3. Write the GitHub Actions Workflow
+### 3. Write the GitHub Actions Workflow
 
 > **~15 min | Intermediate**
 
@@ -151,7 +197,7 @@ Create the workflow file:
 mkdir -p .github/workflows
 ```
 
-### .github/workflows/build-scan-push.yml
+#### .github/workflows/build-scan-push.yml
 
 ```yaml
 name: Build, Scan & Push
@@ -252,7 +298,7 @@ jobs:
 
 > **Important:** The `fcs-action` exit code for image scans is controlled by the **Image Assessment Policy** in the Falcon console, not by the `fail_on` parameter (which only works for IaC scans). That's why we parse the JSON report ourselves to enforce a severity gate. Unfixable OS-level CVEs (glibc, perl, etc.) are excluded so developers aren't blocked on issues they can't resolve.
 
-### Commit and push the workflow
+#### Commit and push the workflow
 
 ```bash
 git add .github/workflows/build-scan-push.yml
@@ -262,13 +308,13 @@ git push
 
 ---
 
-## 4. Test the Gate — Fail Case
+### 4. Test the Gate — Fail Case
 
 > **~10 min | Intermediate**
 
 > **What & Why:** The first run should FAIL because our `requirements.txt` pins vulnerable packages with known fixable CVEs. This proves the gate is working — vulnerable images never reach ghcr.io.
 
-### Watch the workflow run
+#### Watch the workflow run
 
 ```bash
 gh run watch
@@ -280,7 +326,7 @@ Or open the Actions tab in your browser:
 gh browse --settings  # navigate to Actions tab
 ```
 
-### Expected result
+#### Expected result
 
 The workflow should fail at the "Gate - fail on fixable high or critical vulnerabilities" step with output like:
 
@@ -292,26 +338,26 @@ Error: Image has 5 fixable HIGH/CRITICAL vulnerabilities. Blocking push.
 
 The scan finds many total HIGH/CRITICAL CVEs (mostly unfixable OS-level packages in the base image), but only blocks on the ones **you can actually fix** — the vulnerable Flask, Werkzeug, and Jinja2 packages.
 
-### Verify no image was pushed
+#### Verify no image was pushed
 
 ```bash
 gh api user/packages/container/fcs-scan-demo/versions 2>&1 | head -5
 # Should return 404 or empty — no versions exist yet
 ```
 
-### View findings in Falcon console
+#### View findings in Falcon console
 
 Navigate to **Cloud Security** > **Image Assessment** > **CI Images** in the Falcon console. You'll see your scanned image with its vulnerabilities listed — CrowdStrike severity, NVD/CVSS severity, affected packages, and available fixes.
 
 ---
 
-## 5. Fix Vulnerabilities & Pass
+### 5. Fix Vulnerabilities & Pass
 
 > **~10 min | Intermediate**
 
 > **What & Why:** Now we update the vulnerable packages so the image passes assessment. This demonstrates the developer feedback loop — fix locally, push, scan passes, image reaches registry.
 
-### Update requirements.txt
+#### Update requirements.txt
 
 Replace the contents with updated versions:
 
@@ -321,7 +367,7 @@ werkzeug==3.1.3
 jinja2==3.1.6
 ```
 
-### Commit and push
+#### Commit and push
 
 ```bash
 git add requirements.txt
@@ -329,13 +375,13 @@ git commit -m "fix: upgrade packages to resolve CVEs"
 git push
 ```
 
-### Watch it pass
+#### Watch it pass
 
 ```bash
 gh run watch
 ```
 
-### Expected result
+#### Expected result
 
 The gate step should output:
 
@@ -347,20 +393,40 @@ No fixable HIGH/CRITICAL vulnerabilities. Passing (37 unfixable OS-level finding
 
 All steps pass. The remaining HIGH/CRITICAL findings are unfixable OS-level CVEs in the `python:3.11-slim` base image (glibc, perl, ncurses, etc.) — these can't be resolved by the app developer and are correctly ignored.
 
-### Verify the image exists in ghcr.io
+#### Verify the image exists in ghcr.io
 
 ```bash
 gh api user/packages/container/fcs-scan-demo/versions --jq '.[0].metadata.container.tags'
 # Should show: ["<sha>", "latest"]
 ```
 
-### Verify in Falcon console
+#### Verify in Falcon console
 
 Back in **Cloud Security** > **Image Assessment** > **CI Images**, the latest scan should show the image with only non-actionable findings remaining.
 
 ---
 
-## 6. Optional Enhancements
+### 6. Cleanup
+
+Remove all resources created during this lab:
+
+```bash
+# Delete the GitHub repository
+gh repo delete fcs-scan-demo --yes
+
+# Or if you want to keep the repo, just delete the package:
+gh api -X DELETE user/packages/container/fcs-scan-demo 2>/dev/null
+
+# Clean up local directory
+cd ..
+rm -rf fcs-scan-demo
+```
+
+</div>
+
+---
+
+## Optional Enhancements
 
 > **~10 min | Advanced**
 

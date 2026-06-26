@@ -38,8 +38,9 @@ export function useProgress() {
     })
   }, [])
 
-  const getPageProgress = useCallback((labKey) => {
-    const checked = Object.keys(progress).filter(k => k.startsWith(`${labKey}:`) && progress[k]).length
+  const getPageProgress = useCallback((labKey, activeMode, hasMode) => {
+    const prefix = hasMode ? `${labKey}:${activeMode}:` : `${labKey}:`
+    const checked = Object.keys(progress).filter(k => k.startsWith(prefix) && progress[k]).length
     const content = getLabContent(labKey)
     const total = countCheckboxes(content)
     return { checked, total }

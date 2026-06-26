@@ -143,6 +143,79 @@ The Falcon Container sensor **requires** Cloud Run's second-generation execution
 
 ---
 
+## Deployment Steps
+
+<div data-mode="guide">
+
+### 1. Create API credentials
+
+Create an API client in the Falcon console with **Falcon Images Download: Read** and **Sensor Download: Read** scopes.
+
+```bash
+export FALCON_CLIENT_ID=<your_client_id>
+export FALCON_CLIENT_SECRET=<your_client_secret>
+export FALCON_CID=<your_cid_with_checksum>
+
+export PROJECT_ID=$(gcloud config get-value project)
+export REGION=us-central1
+export GAR_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/falcon-lab"
+```
+
+### 2. Pull Falcon sensor image into your registry
+
+```bash
+export LATESTSENSOR=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) \
+  -t falcon-container --platform x86_64 | tail -1)
+
+docker tag $LATESTSENSOR ${GAR_BASE}/falcon-container:latest
+docker push ${GAR_BASE}/falcon-container:latest
+```
+
+### 3. Patch your application image
+
+```bash
+docker run --user 0:0 \
+  -v ${HOME}/.docker/config.json:/root/.docker/config.json \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --rm ${GAR_BASE}/falcon-container:latest \
+  falconutil patch-image \
+  --source-image-uri ${GAR_BASE}/<YOUR_IMAGE>:<TAG> \
+  --target-image-uri ${GAR_BASE}/<YOUR_IMAGE>:<TAG>-falcon \
+  --falcon-image-uri ${GAR_BASE}/falcon-container:latest \
+  --cid $FALCON_CID \
+  --image-pull-policy IfNotPresent \
+  --cloud-service CLOUDRUN
+
+docker push ${GAR_BASE}/<YOUR_IMAGE>:<TAG>-falcon
+```
+
+### 4. Deploy patched image to Cloud Run
+
+```bash
+gcloud run deploy <SERVICE_NAME> \
+  --image=${GAR_BASE}/<YOUR_IMAGE>:<TAG>-falcon \
+  --platform=managed \
+  --region=$REGION \
+  --port=8080 \
+  --execution-environment=gen2 \
+  --allow-unauthenticated
+```
+
+> `--execution-environment=gen2` is mandatory. Gen1 uses gVisor which blocks the syscalls the Falcon sensor needs.
+
+### 5. Verify in Falcon console
+
+Curl the service URL to trigger a cold start, then check **Host management** in the Falcon console for the new host.
+
+```bash
+SERVICE_URL=$(gcloud run services describe <SERVICE_NAME> --region=$REGION --format='value(status.url)')
+curl -s $SERVICE_URL
+```
+
+</div>
+
+<div data-mode="lab">
+
 ## 3. Create GAR Repository & Push Sample Images
 
 > **~15 min | Intermediate**
@@ -151,7 +224,7 @@ The Falcon Container sensor **requires** Cloud Run's second-generation execution
 
 > **What & Why:** Artifact Registry and Cloud Run APIs must be enabled before you can create repos or deploy services. IAM is needed for Workload Identity Federation.
 
-- [ ] **Console:** Navigate to **APIs & Services** → **Enable APIs and Services** → Search and enable:
+- [ ] **Console:** Navigate to **APIs & Services** > **Enable APIs and Services** > Search and enable:
   - Artifact Registry API
   - Cloud Run Admin API
   - IAM Service Account Credentials API
@@ -177,7 +250,7 @@ gcloud services enable \
 
 > **What & Why:** GAR organizes images in repositories. We'll create a single Docker repo called `falcon-lab` that holds all our images (app images + sensor image) under different paths.
 
-- [ ] **Console:** Navigate to **Artifact Registry** → **Repositories** → Click **Create Repository**
+- [ ] **Console:** Navigate to **Artifact Registry** > **Repositories** > Click **Create Repository**
   - Name: `falcon-lab`
   - Format: **Docker**
   - Mode: **Standard**
@@ -269,7 +342,7 @@ import (
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{S
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "ok",
 			"service": "go-api",
 		})
@@ -298,7 +371,7 @@ docker push ${GAR_BASE}/python-flask:1.0
 docker push ${GAR_BASE}/go-api:1.0
 ```
 
-- [ ] **Verify in Console:** Navigate to **Artifact Registry** → **falcon-lab** → Confirm `nginx`, `python-flask`, and `go-api` appear with the `:1.0` tag.
+- [ ] **Verify in Console:** Navigate to **Artifact Registry** > **falcon-lab** > Confirm `nginx`, `python-flask`, and `go-api` appear with the `:1.0` tag.
 
 ---
 
@@ -344,7 +417,7 @@ docker tag $LATESTSENSOR ${GAR_BASE}/falcon-container:latest
 docker push ${GAR_BASE}/falcon-container:latest
 ```
 
-- [ ] **Verify in Console:** Navigate to **Artifact Registry** → **falcon-lab** → Confirm `falcon-container` with `:latest` tag exists.
+- [ ] **Verify in Console:** Navigate to **Artifact Registry** > **falcon-lab** > Confirm `falcon-container` with `:latest` tag exists.
 
 ### Step 4: Rebuild as amd64-Only Image
 
@@ -438,7 +511,7 @@ docker inspect ${GAR_BASE}/nginx:1.0-falcon --format '{{.Config.Entrypoint}}'
 docker push ${GAR_BASE}/nginx:1.0-falcon
 ```
 
-- [ ] **Verify in Console:** Navigate to **Artifact Registry** → **falcon-lab** → **nginx** → Confirm both `:1.0` and `:1.0-falcon` tags exist.
+- [ ] **Verify in Console:** Navigate to **Artifact Registry** > **falcon-lab** > **nginx** > Confirm both `:1.0` and `:1.0-falcon` tags exist.
 
 > You now understand the full flow manually. Next, we'll automate this with GitHub Actions.
 
@@ -483,13 +556,13 @@ docker push ${GAR_BASE}/nginx:1.0-falcon
 
 > **What & Why:** The GitHub Actions runner needs a GCP identity to pull/push images in GAR. This service account will be impersonated via WIF — the runner never holds a key.
 
-- [ ] **Console:** Navigate to **IAM & Admin** → **Service Accounts** → Click **Create Service Account**
+- [ ] **Console:** Navigate to **IAM & Admin** > **Service Accounts** > Click **Create Service Account**
   - Name: `github-actions-falcon`
   - ID: `github-actions-falcon`
   - Description: `Used by GitHub Actions to patch container images in GAR`
   - Click **Create and Continue**
   - Grant role: **Artifact Registry Writer** (`roles/artifactregistry.writer`)
-  - Click **Continue** → **Done**
+  - Click **Continue** > **Done**
 
 <details>
 <summary>CLI equivalent</summary>
@@ -510,7 +583,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 > **What & Why:** The pool is a container for external identity providers. It tells GCP "I trust tokens from these sources."
 
-- [ ] **Console:** Navigate to **IAM & Admin** → **Workload Identity Federation** → Click **Create Pool**
+- [ ] **Console:** Navigate to **IAM & Admin** > **Workload Identity Federation** > Click **Create Pool**
   - Name: `github-actions-pool`
   - Pool ID: `github-actions-pool`
   - Description: `Pool for GitHub Actions OIDC tokens`
@@ -578,7 +651,7 @@ export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(pro
 ```
 
 - [ ] **Console:**
-  1. Navigate to **IAM & Admin** → **Service Accounts**
+  1. Navigate to **IAM & Admin** > **Service Accounts**
   2. Click the **github-actions-falcon** service account to open its details
   3. Click the **Permissions** tab (not the IAM tab on the left — this is the tab _within_ the service account page)
   4. Under **"Principals with access to this service account"**, click **Grant Access**
@@ -628,7 +701,7 @@ echo $WIF_PROVIDER
 
 > **What & Why:** The workflow needs CrowdStrike credentials for `falconutil` and GCP identifiers for WIF authentication. Secrets are encrypted; variables are plaintext config.
 
-- [ ] **GitHub:** Navigate to your repo → **Settings** → **Secrets and variables** → **Actions**
+- [ ] **GitHub:** Navigate to your repo > **Settings** > **Secrets and variables** > **Actions**
 
   **Secrets** (encrypted):
   | Name | Value |
@@ -742,7 +815,7 @@ jobs:
 
 > **What & Why:** Manually dispatch the workflow to patch each image. This simulates what a security team would do after a developer pushes a new version.
 
-- [ ] **GitHub:** Navigate to your repo → **Actions** → **Patch Cloud Run Image with Falcon Sensor** → Click **Run workflow**
+- [ ] **GitHub:** Navigate to your repo > **Actions** > **Patch Cloud Run Image with Falcon Sensor** > Click **Run workflow**
   - Branch: `main`
   - Image name: `nginx`
   - Image tag: `1.0`
@@ -777,7 +850,7 @@ gh workflow run patch-cloudrun-image.yml \
 
 > **What & Why:** Confirm all 3 images now have both their original tag and the patched `-falcon` tag in Artifact Registry.
 
-- [ ] **Console:** Navigate to **Artifact Registry** → **falcon-lab** → Click into each image
+- [ ] **Console:** Navigate to **Artifact Registry** > **falcon-lab** > Click into each image
 
   **Expected state:**
   | Image | Tags present |
@@ -810,8 +883,8 @@ done
 
 > **What & Why:** Deploy the `-falcon` tagged image to Cloud Run. The embedded sensor starts automatically via the modified entrypoint, monitors the application, and reports telemetry to CrowdStrike.
 
-- [ ] **Console:** Navigate to **Cloud Run** → Click **Create Service**
-  - Container image URL: Click **Select** → **Artifact Registry** → `falcon-lab` → `nginx` → Select `:1.0-falcon`
+- [ ] **Console:** Navigate to **Cloud Run** > Click **Create Service**
+  - Container image URL: Click **Select** > **Artifact Registry** > `falcon-lab` > `nginx` > Select `:1.0-falcon`
   - Service name: `nginx-falcon`
   - Region: `us-central1`
   - Authentication: **Allow unauthenticated invocations** (for testing)
@@ -870,7 +943,7 @@ curl -s $SERVICE_URL
 for i in {1..3}; do curl -s -o /dev/null -w "%{http_code}\n" $SERVICE_URL; done
 ```
 
-- [ ] **Falcon Console:** Navigate to **Host setup and management** → **Host management** → Filter by:
+- [ ] **Falcon Console:** Navigate to **Host setup and management** > **Host management** > Filter by:
   - Look for hosts with the Cloud Run service name or container metadata
   - The host should appear within 1-2 minutes of the first request
 
@@ -963,7 +1036,44 @@ terraform apply
 
 ---
 
-## 11. Challenges
+## 11. Cleanup
+
+When you're done with the lab:
+
+```bash
+# Option 1: Terraform (if you completed Section 10)
+terraform destroy
+
+# Option 2: Manual
+# Delete Cloud Run service
+gcloud run services delete nginx-falcon --region=$REGION --quiet
+
+# Delete all images in GAR repo
+gcloud artifacts docker images delete \
+  ${REGION}-docker.pkg.dev/${PROJECT_ID}/falcon-lab --delete-tags --quiet
+
+# Delete GAR repository
+gcloud artifacts repositories delete falcon-lab \
+  --location=$REGION --quiet
+
+# Delete WIF provider and pool
+gcloud iam workload-identity-pools providers delete github \
+  --location=global \
+  --workload-identity-pool=github-actions-pool --quiet
+
+gcloud iam workload-identity-pools delete github-actions-pool \
+  --location=global --quiet
+
+# Delete service account
+gcloud iam service-accounts delete \
+  github-actions-falcon@${PROJECT_ID}.iam.gserviceaccount.com --quiet
+```
+
+</div>
+
+---
+
+## 12. Challenges
 
 > **~15 min | Advanced**
 
@@ -1167,62 +1277,27 @@ def trigger_patching(cloud_event):
     print(f"Dispatched workflow for {image_name}:{image_tag} - Status: {resp.status_code}")
 ```
 
-This creates a fully automated pipeline: dev pushes image → GAR → Pub/Sub → Cloud Function → GitHub Actions → patched image back in GAR.
+This creates a fully automated pipeline: dev pushes image > GAR > Pub/Sub > Cloud Function > GitHub Actions > patched image back in GAR.
 
 </details>
 
 ---
 
-## 12. Quick Reference
+## 13. Quick Reference
 
 | Action                  | Console Path                                     | CLI Command                                                                                                                                                |
 | ----------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Create GAR repo         | Artifact Registry → Create Repository            | `gcloud artifacts repositories create <name> --repository-format=docker --location=<region>`                                                               |
-| List image tags         | Artifact Registry → Repo → Image                 | `gcloud artifacts docker tags list <image-path>`                                                                                                           |
+| Create GAR repo         | Artifact Registry > Create Repository            | `gcloud artifacts repositories create <name> --repository-format=docker --location=<region>`                                                               |
+| List image tags         | Artifact Registry > Repo > Image                 | `gcloud artifacts docker tags list <image-path>`                                                                                                           |
 | GAR Docker login        | —                                                | `gcloud auth configure-docker <region>-docker.pkg.dev`                                                                                                     |
 | Pull CrowdStrike sensor | —                                                | `bash <(curl -Ls .../falcon-container-sensor-pull.sh) -t falcon-container --platform x86_64`                                                               |
 | Patch image locally     | —                                                | `docker run ... falconutil patch-image --source-image-uri <src> --target-image-uri <tgt> --falcon-image-uri <sensor> --cid <cid> --cloud-service CLOUDRUN` |
-| Create service account  | IAM → Service Accounts → Create                  | `gcloud iam service-accounts create <name>`                                                                                                                |
-| Create WIF pool         | IAM → Workload Identity Federation → Create Pool | `gcloud iam workload-identity-pools create <name> --location=global`                                                                                       |
-| Add OIDC provider       | WIF Pool → Add Provider                          | `gcloud iam workload-identity-pools providers create-oidc <name> ...`                                                                                      |
-| Deploy to Cloud Run     | Cloud Run → Create Service                       | `gcloud run deploy <name> --image=<uri> --execution-environment=gen2`                                                                                      |
-| Trigger GH Actions      | Actions → Workflow → Run                         | `gh workflow run patch-cloudrun-image.yml -f image_name=nginx -f image_tag=1.0`                                                                            |
+| Create service account  | IAM > Service Accounts > Create                  | `gcloud iam service-accounts create <name>`                                                                                                                |
+| Create WIF pool         | IAM > Workload Identity Federation > Create Pool | `gcloud iam workload-identity-pools create <name> --location=global`                                                                                       |
+| Add OIDC provider       | WIF Pool > Add Provider                          | `gcloud iam workload-identity-pools providers create-oidc <name> ...`                                                                                      |
+| Deploy to Cloud Run     | Cloud Run > Create Service                       | `gcloud run deploy <name> --image=<uri> --execution-environment=gen2`                                                                                      |
+| Trigger GH Actions      | Actions > Workflow > Run                         | `gh workflow run patch-cloudrun-image.yml -f image_name=nginx -f image_tag=1.0`                                                                            |
 | Get project number      | —                                                | `gcloud projects describe $PROJECT_ID --format='value(projectNumber)'`                                                                                     |
-
----
-
-## Cleanup
-
-When you're done with the lab:
-
-```bash
-# Option 1: Terraform (if you completed Section 10)
-terraform destroy
-
-# Option 2: Manual
-# Delete Cloud Run service
-gcloud run services delete nginx-falcon --region=$REGION --quiet
-
-# Delete all images in GAR repo
-gcloud artifacts docker images delete \
-  ${REGION}-docker.pkg.dev/${PROJECT_ID}/falcon-lab --delete-tags --quiet
-
-# Delete GAR repository
-gcloud artifacts repositories delete falcon-lab \
-  --location=$REGION --quiet
-
-# Delete WIF provider and pool
-gcloud iam workload-identity-pools providers delete github \
-  --location=global \
-  --workload-identity-pool=github-actions-pool --quiet
-
-gcloud iam workload-identity-pools delete github-actions-pool \
-  --location=global --quiet
-
-# Delete service account
-gcloud iam service-accounts delete \
-  github-actions-falcon@${PROJECT_ID}.iam.gserviceaccount.com --quiet
-```
 
 ---
 

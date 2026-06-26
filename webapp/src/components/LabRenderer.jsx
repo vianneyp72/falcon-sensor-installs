@@ -9,19 +9,22 @@ import TableOfContents from './TableOfContents'
 import CodeBlock from './CodeBlock'
 import FlowDiagram, { isAsciiDiagram } from './FlowDiagram'
 import StatusBadge from './StatusBadge'
+import ModeToggle, { useModeToggle, contentHasMode } from './ModeToggle'
 
 export default function LabRenderer({ labKey }) {
   const content = getLabContent(labKey)
   const meta = getLabMeta(labKey)
   const contentRef = useRef(null)
   const { isChecked, toggleCheckbox, getPageProgress } = useProgress()
-  const headings = useHeadings(contentRef, content)
+  const [activeMode, setActiveMode] = useModeToggle()
+  const headings = useHeadings(contentRef, content, activeMode)
   const checkboxIndex = useRef(0)
+  const hasMode = contentHasMode(content)
 
   // Reset checkbox index on each render
   checkboxIndex.current = 0
 
-  const pageProgress = getPageProgress(labKey)
+  const pageProgress = getPageProgress(labKey, activeMode, hasMode)
 
   if (!content || content.trim().length === 0) {
     return (
@@ -72,10 +75,20 @@ export default function LabRenderer({ labKey }) {
     pre({ children }) {
       return <>{children}</>
     },
+    div({ node, children, ...props }) {
+      const dataMode = node?.properties?.dataMode
+      if (dataMode) {
+        if (dataMode !== activeMode) {
+          return <div className="mode-content--hidden" />
+        }
+        return <div {...props}>{children}</div>
+      }
+      return <div {...props}>{children}</div>
+    },
     input({ type, checked, disabled, node, ...props }) {
       if (type === 'checkbox') {
         const idx = checkboxIndex.current++
-        const key = `${labKey}:${idx}`
+        const key = hasMode ? `${labKey}:${activeMode}:${idx}` : `${labKey}:${idx}`
         const isComplete = isChecked(key)
         return (
           <input
@@ -96,7 +109,7 @@ export default function LabRenderer({ labKey }) {
 
       if (hasCheckbox) {
         const idx = checkboxIndex.current // peek (input renderer will increment)
-        const key = `${labKey}:${idx}`
+        const key = hasMode ? `${labKey}:${activeMode}:${idx}` : `${labKey}:${idx}`
         const isComplete = isChecked(key)
         return (
           <li className={`lab-checkbox ${isComplete ? 'checked' : ''}`} {...props}>
@@ -122,6 +135,16 @@ export default function LabRenderer({ labKey }) {
     },
     h2({ children, ...props }) {
       const id = slugify(children)
+      const text = typeof children === 'string' ? children : Array.isArray(children)
+        ? children.map(c => (typeof c === 'string' ? c : '')).join('') : ''
+      if (hasMode && /deployment steps/i.test(text)) {
+        return (
+          <>
+            <ModeToggle activeMode={activeMode} setActiveMode={setActiveMode} />
+            <h2 id={id} {...props}>{children}</h2>
+          </>
+        )
+      }
       return <h2 id={id} {...props}>{children}</h2>
     },
     h3({ children, ...props }) {

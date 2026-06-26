@@ -99,11 +99,9 @@ export TASK_FAMILY=<your_task_family_name>
 
 ## Deployment Steps
 
-### 1. Get your CrowdStrike CID with checksum
+<div data-mode="guide">
 
-In the Falcon console: **Host setup and management > Deploy > Sensor downloads**. Copy the CID with checksum (already exported above as `$FALCON_CID`).
-
-### 2. Pull the Falcon Container sensor image
+### 1. Pull the Falcon Container sensor image
 
 ```bash
 export LATESTSENSOR=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) \
@@ -111,13 +109,7 @@ export LATESTSENSOR=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scri
   --platform x86_64 | tail -1) && echo $LATESTSENSOR
 ```
 
-### 3. Push the sensor image to your registry
-
-Choose **one** of the following options based on your image registry.
-
----
-
-#### Option A: Push to AWS ECR
+### 2. Push the sensor image to ECR
 
 ```bash
 aws ecr create-repository \
@@ -132,92 +124,7 @@ docker tag "$LATESTSENSOR" "$SENSOR_IMAGE_REPO":latest
 docker push "$SENSOR_IMAGE_REPO":latest
 ```
 
----
-
-#### Option B: Push to a private registry (Quay, JFrog Artifactory, Harbor, etc.)
-
-This method works with any OCI-compliant container registry. You can either:
-
-1. Pull locally first, then tag and push (shown below)
-2. Use the pull script's `--copy` flag to copy directly to the registry (shown in the alternative at the end)
-
-**Log in to your registry:**
-
-```bash
-# Quay.io example:
-docker login quay.io
-
-# JFrog Artifactory example:
-docker login <your-artifactory-instance>.jfrog.io
-
-# Harbor example:
-docker login harbor.example.com
-```
-
-**Tag and push:**
-
-```bash
-export SENSOR_IMAGE_REPO=<your-registry>/<namespace>/falcon-container
-# Examples:
-#   quay.io/myorg/falcon-container
-#   mycompany.jfrog.io/docker-local/falcon-container
-#   harbor.example.com/crowdstrike/falcon-container
-
-docker tag "$LATESTSENSOR" "$SENSOR_IMAGE_REPO":latest
-docker push "$SENSOR_IMAGE_REPO":latest
-```
-
-**Alternative — use the pull script's `--copy` flag to skip the local pull entirely:**
-
-```bash
-bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) \
-  -t falcon-container \
-  --platform x86_64 \
-  --copy <your-registry>/<namespace>
-
-# Examples:
-#   --copy quay.io/myorg
-#   --copy mycompany.jfrog.io/docker-local
-#   --copy harbor.example.com/crowdstrike
-```
-
-The `--copy` flag pulls from the CrowdStrike registry and pushes directly to your destination. By default, the image name and tag are appended (e.g., `quay.io/myorg/falcon-container:7.x.x`).
-
-Additional `--copy` options:
-
-- `--copy-omit-image-name` — don't append the sensor image name to the destination path
-- `--copy-custom-tag <TAG>` — use a custom tag instead of the version tag
-- `--runtime skopeo` — use Skopeo instead of Docker (recommended for multi-arch images)
-
-```bash
-# Example: copy to exact path with custom tag using skopeo
-bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) \
-  -t falcon-container \
-  --copy mycompany.jfrog.io/docker-local/crowdstrike-falcon \
-  --copy-omit-image-name \
-  --copy-custom-tag latest \
-  --runtime skopeo
-```
-
-After copying, set the repo variable for subsequent steps:
-
-```bash
-export SENSOR_IMAGE_REPO=<your-registry>/<namespace>/falcon-container
-```
-
----
-
-### 4. Create a pull token for registry authentication
-
-The patching utility needs a pull token to access **all images** referenced in the task definition — both the sensor image and your app images. If your app images are in a private registry (JFrog, Quay, etc.), the pull token must include creds for that registry too.
-
-> **Warning: Docker Desktop credential helpers.** If you're on macOS or using Docker Desktop, your `~/.docker/config.json` likely uses a credential helper (`"credsStore": "desktop"`) and stores no actual credentials in the file. In that case, `cat ~/.docker/config.json | base64` produces a **useless empty token**. You must construct the token explicitly (see options below).
->
-> Check with: `cat ~/.docker/config.json` — if you see `"credsStore"` or empty `{}` auth entries, use the explicit method.
-
-**Option A: Everything in ECR (recommended for most setups)**
-
-Constructs the token directly from `aws ecr get-login-password` — works regardless of Docker credential helpers:
+### 3. Create a pull token
 
 ```bash
 export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -226,39 +133,7 @@ export ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 export IMAGE_PULL_TOKEN=$(echo "{\"auths\":{\"$ECR_REGISTRY\":{\"auth\":\"$(echo -n AWS:$(aws ecr get-login-password --region $AWS_REGION) | base64)\"}}}" | base64)
 ```
 
-> **Important:** The registry key in the token must **exactly match** the registry hostname in your task definition images. Don't leave `<AWSACCOUNTID>` or `<AWSREGION>` as literal placeholders — use the variables or substitute your actual values.
-
-> **Note:** AWS ECR credentials are short-lived (12 hours). Regenerate this token if your pipeline takes longer.
-
-**Option B: Mixed registries — sensor in ECR, app images in a private registry**
-
-You need creds for BOTH registries. Construct them explicitly:
-
-```bash
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-
-# Get ECR auth
-ECR_AUTH=$(echo -n AWS:$(aws ecr get-login-password --region $AWS_REGION) | base64)
-
-# Get your private registry auth (username:password base64-encoded)
-PRIVATE_REGISTRY_AUTH=$(echo -n "<username>:<password-or-token>" | base64)
-
-# Combine into a single pull token
-export IMAGE_PULL_TOKEN=$(echo "{\"auths\":{\"$ECR_REGISTRY\":{\"auth\":\"$ECR_AUTH\"},\"mycompany.jfrog.io\":{\"auth\":\"$PRIVATE_REGISTRY_AUTH\"}}}" | base64)
-```
-
-**Option C: Docker config (only works WITHOUT credential helpers)**
-
-This only works if your `~/.docker/config.json` has actual credentials inline (typical on Linux CI runners without Docker Desktop):
-
-```bash
-export IMAGE_PULL_TOKEN=$(cat ~/.docker/config.json | base64 -w 0)
-```
-
-> **Note:** If you see `"credsStore": "desktop"` or empty `{}` auth entries in your config, this method will NOT work. Use Option A or B instead.
-
-### 5. Export your task definition (remove managed fields)
+### 4. Export your existing task definition
 
 ```bash
 aws ecs describe-task-definition \
@@ -269,9 +144,7 @@ aws ecs describe-task-definition \
   > taskdefinition.json
 ```
 
-> **Important:** Remove these managed fields before patching: `requiresAttributes`, `status`, `revision`, `compatibilities`, `registeredAt`, `registeredBy`, `taskDefinitionArn`, `tags` (if empty). Otherwise you'll see `parameter validation failed` errors.
-
-### 6. Run the patching utility
+### 5. Patch the task definition with the Falcon sensor
 
 ```bash
 docker run -v $(pwd):/var/run/spec \
@@ -282,15 +155,7 @@ docker run -v $(pwd):/var/run/spec \
   -ecs-spec-file /var/run/spec/taskdefinition.json > taskdefinitionwithfalcon.json
 ```
 
-> **Tip:** Use `--falconctl-opts` to pass sensor configuration options. Example: `--falconctl-opts "--tags='production,web-server'"`
-
-> **Tip:** To exclude a container from sensor injection, add this label to its container definition:
->
-> ```json
-> "dockerLabels": { "sensor.falcon-system.crowdstrike.com/injection": "disabled" }
-> ```
-
-### 7. Register and deploy the patched task definition
+### 6. Register and deploy the patched task definition
 
 ```bash
 aws ecs register-task-definition \
@@ -305,30 +170,281 @@ aws ecs update-service \
   --force-new-deployment
 ```
 
-### 8. Verify the sensor deployment
+### 7. Verify
 
-**Option 1: Exec into the container**
+```bash
+aws ecs describe-task-definition \
+  --task-definition $TASK_FAMILY \
+  --region $AWS_REGION \
+  --query 'taskDefinition.containerDefinitions[].name'
+```
+
+Expected output includes both your app container and `crowdstrike-falcon-init-container`.
+
+</div>
+
+<div data-mode="lab">
+
+### 1. Provision ECS Infrastructure
+
+> **What this does:** Creates an ECS Fargate cluster, a sample app task definition, and an ECS service so you have a working environment to patch with the Falcon sensor.
+
+**Create an ECS cluster:**
+
+```bash
+aws ecs create-cluster \
+  --cluster-name falcon-lab-cluster \
+  --region $AWS_REGION
+```
+
+**Create the task execution role (if it doesn't exist):**
+
+```bash
+aws iam create-role \
+  --role-name ecsTaskExecutionRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy \
+  --role-name ecsTaskExecutionRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+```
+
+**Create a sample app task definition:**
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+cat > sample-task-def.json <<'EOF'
+{
+  "family": "falcon-lab-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "nginx",
+      "image": "public.ecr.aws/nginx/nginx:latest",
+      "portMappings": [{"containerPort": 80, "protocol": "tcp"}],
+      "essential": true
+    }
+  ]
+}
+EOF
+
+sed -i "s/ACCOUNT_ID/$AWS_ACCOUNT_ID/" sample-task-def.json
+
+aws ecs register-task-definition \
+  --region $AWS_REGION \
+  --cli-input-json file://sample-task-def.json
+```
+
+**Get a subnet and security group for the service:**
+
+```bash
+export VPC_ID=$(aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" \
+  --query 'Vpcs[0].VpcId' --output text --region $AWS_REGION)
+
+export SUBNET_ID=$(aws ec2 describe-subnets \
+  --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" \
+  --query 'Subnets[0].SubnetId' --output text --region $AWS_REGION)
+
+export SG_ID=$(aws ec2 describe-security-groups \
+  --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=default" \
+  --query 'SecurityGroups[0].GroupId' --output text --region $AWS_REGION)
+```
+
+**Create the ECS service:**
+
+```bash
+export TASK_FAMILY=falcon-lab-app
+
+aws ecs create-service \
+  --cluster falcon-lab-cluster \
+  --service-name falcon-lab-service \
+  --task-definition $TASK_FAMILY \
+  --desired-count 1 \
+  --launch-type FARGATE \
+  --enable-execute-command \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" \
+  --region $AWS_REGION
+```
+
+**Wait for the task to reach RUNNING:**
+
+```bash
+aws ecs wait services-stable \
+  --cluster falcon-lab-cluster \
+  --services falcon-lab-service \
+  --region $AWS_REGION
+```
+
+### 2. Get your CrowdStrike CID with checksum
+
+In the Falcon console: **Host setup and management > Deploy > Sensor downloads**. Copy the CID with checksum (already exported above as `$FALCON_CID`).
+
+### 3. Pull the Falcon Container sensor image
+
+```bash
+export LATESTSENSOR=$(bash <(curl -Ls https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh) \
+  -t falcon-container \
+  --platform x86_64 | tail -1) && echo $LATESTSENSOR
+```
+
+### 4. Push the sensor image to ECR
+
+```bash
+aws ecr create-repository \
+  --repository-name falcon-sensor/falcon-container \
+  --region $AWS_REGION
+
+export SENSOR_IMAGE_REPO=$(aws ecr describe-repositories \
+  --repository-name falcon-sensor/falcon-container | \
+  jq -r '.repositories[].repositoryUri' | tail -1) && echo $SENSOR_IMAGE_REPO
+
+docker tag "$LATESTSENSOR" "$SENSOR_IMAGE_REPO":latest
+docker push "$SENSOR_IMAGE_REPO":latest
+```
+
+### 5. Create a pull token for registry authentication
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+export IMAGE_PULL_TOKEN=$(echo "{\"auths\":{\"$ECR_REGISTRY\":{\"auth\":\"$(echo -n AWS:$(aws ecr get-login-password --region $AWS_REGION) | base64)\"}}}" | base64)
+```
+
+### 6. Export your task definition (remove managed fields)
+
+```bash
+aws ecs describe-task-definition \
+  --task-definition $TASK_FAMILY \
+  --region $AWS_REGION \
+  --query 'taskDefinition' | \
+  jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .tags)' \
+  > taskdefinition.json
+```
+
+### 7. Run the patching utility
+
+```bash
+docker run -v $(pwd):/var/run/spec \
+  --rm "$SENSOR_IMAGE_REPO" \
+  -cid $FALCON_CID \
+  -image "$SENSOR_IMAGE_REPO" \
+  -pulltoken $IMAGE_PULL_TOKEN \
+  -ecs-spec-file /var/run/spec/taskdefinition.json > taskdefinitionwithfalcon.json
+```
+
+### 8. Register and deploy the patched task definition
+
+```bash
+aws ecs register-task-definition \
+  --region $AWS_REGION \
+  --cli-input-json file://taskdefinitionwithfalcon.json
+
+aws ecs update-service \
+  --region $AWS_REGION \
+  --cluster falcon-lab-cluster \
+  --service falcon-lab-service \
+  --task-definition $TASK_FAMILY \
+  --force-new-deployment
+```
+
+**Wait for the new deployment to stabilize:**
+
+```bash
+aws ecs wait services-stable \
+  --cluster falcon-lab-cluster \
+  --services falcon-lab-service \
+  --region $AWS_REGION
+```
+
+### 9. Verify the sensor deployment
+
+**Get the running task ARN:**
+
+```bash
+export TASK_ARN=$(aws ecs list-tasks \
+  --cluster falcon-lab-cluster \
+  --service-name falcon-lab-service \
+  --query 'taskArns[0]' --output text \
+  --region $AWS_REGION) && echo $TASK_ARN
+```
+
+**Exec into the container and check the AID:**
 
 ```bash
 aws ecs execute-command \
   --region $AWS_REGION \
-  --cluster <CLUSTER_NAME> \
-  --task <TASK_ARN> \
-  --container <CONTAINER_NAME> \
+  --cluster falcon-lab-cluster \
+  --task $TASK_ARN \
+  --container nginx \
   --interactive \
   --command "/tmp/CrowdStrike/rootfs/bin/falconctl -g --aid"
 ```
 
-A valid AID in the output confirms the sensor is connected to the CrowdStrike cloud.
+A valid AID (32-character hex string) confirms the sensor is connected to the CrowdStrike cloud.
 
-**Option 2: Falcon Console**
+**Verify in the Falcon Console:**
 
 1. Go to **Host setup and management > Manage endpoints > Host management**
 2. Add a **Pod ID** filter
-3. Set the value to your **ECS Task ID** (e.g., `40f250e409ec4da1afee7acbcf7123cd`)
+3. Set the value to your **ECS Task ID** (extract from the task ARN)
 4. Verify the Host ID field has a value
 
-> **Note:** For ECS Fargate, the Host ID = AID for event verification.
+**Verify the patched task definition structure:**
+
+```bash
+aws ecs describe-task-definition \
+  --task-definition $TASK_FAMILY \
+  --region $AWS_REGION \
+  --query 'taskDefinition.containerDefinitions[].name'
+```
+
+Expected output should include both `nginx` and `crowdstrike-falcon-init-container`.
+
+### 10. Cleanup
+
+```bash
+# Delete the ECS service
+aws ecs update-service \
+  --cluster falcon-lab-cluster \
+  --service falcon-lab-service \
+  --desired-count 0 \
+  --region $AWS_REGION
+
+aws ecs delete-service \
+  --cluster falcon-lab-cluster \
+  --service falcon-lab-service \
+  --force \
+  --region $AWS_REGION
+
+# Delete the ECS cluster
+aws ecs delete-cluster \
+  --cluster falcon-lab-cluster \
+  --region $AWS_REGION
+
+# Delete the ECR repository
+aws ecr delete-repository \
+  --repository-name falcon-sensor/falcon-container \
+  --force \
+  --region $AWS_REGION
+
+# Clean up local files
+rm -f taskdefinition.json taskdefinitionwithfalcon.json sample-task-def.json
+```
+
+</div>
 
 ## What the Patched Task Definition Looks Like
 

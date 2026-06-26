@@ -110,6 +110,49 @@ Instead of storing long-lived AWS access keys as GitHub secrets, we use **OIDC f
 
 ---
 
+## Deployment Steps
+
+<div data-mode="guide">
+
+### 1. Add CrowdStrike Secrets to GitHub Repo
+
+Navigate to your repo > **Settings** > **Secrets and variables** > **Actions** and add:
+
+| Type | Name | Value |
+|------|------|-------|
+| Secret | `FALCON_CLIENT_SECRET` | Your CrowdStrike API client secret |
+| Secret | `FALCON_CID` | Your CID with checksum |
+| Variable | `FALCON_CLIENT_ID` | Your CrowdStrike API client ID |
+| Variable | `FALCON_REGION` | Your CrowdStrike cloud (e.g., `us-1`) |
+
+### 2. Add the `falconutil-action` Step to Your Workflow
+
+Add this step to your existing CI/CD workflow (after your ECR login step):
+
+```yaml
+      - name: Patch image with Falcon sensor
+        uses: crowdstrike/falconutil-action@v1.1.0
+        with:
+          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: ${{ vars.FALCON_REGION }}
+          source_image_uri: <ECR_BASE>/<IMAGE_NAME>:<TAG>
+          target_image_uri: <ECR_BASE>/<IMAGE_NAME>:<TAG>-falcon
+          cid: ${{ secrets.FALCON_CID }}
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+
+      - name: Push patched image
+        run: docker push <ECR_BASE>/<IMAGE_NAME>:<TAG>-falcon
+```
+
+### 3. Push and Verify
+
+Trigger the workflow and confirm the patched image appears in your registry with the `-falcon` suffix.
+
+</div>
+
+<div data-mode="lab">
+
 ## 3. Create ECR Repos & Push Sample Images
 
 > **~15 min | Intermediate**
@@ -118,7 +161,7 @@ Instead of storing long-lived AWS access keys as GitHub secrets, we use **OIDC f
 
 > **What & Why:** We need 4 ECR repos — 3 for application images and 1 for the Falcon sensor image. Keeping the sensor in your own ECR avoids rate-limiting from CrowdStrike's registry during CI/CD runs.
 
-- [ ] **Console:** Navigate to **Amazon ECR** → **Private registry** → **Repositories** → Click **Create repository**
+- [ ] **Console:** Navigate to **Amazon ECR** > **Private registry** > **Repositories** > Click **Create repository**
 
   Create each of these repositories (repeat 4 times):
 
@@ -200,7 +243,7 @@ docker push ${ECR_BASE}/apps/python-flask:1.0
 docker push ${ECR_BASE}/apps/node-express:1.0
 ```
 
-- [ ] **Verify in Console:** Navigate to **ECR** → **Repositories** → Click into each `apps/*` repo and confirm the `:1.0` tag appears.
+- [ ] **Verify in Console:** Navigate to **ECR** > **Repositories** > Click into each `apps/*` repo and confirm the `:1.0` tag appears.
 
 ---
 
@@ -246,7 +289,7 @@ docker tag $LATESTSENSOR ${ECR_BASE}/falcon-sensor/falcon-container:latest
 docker push ${ECR_BASE}/falcon-sensor/falcon-container:latest
 ```
 
-- [ ] **Verify in Console:** Navigate to **ECR** → **falcon-sensor/falcon-container** → Confirm `:latest` tag exists.
+- [ ] **Verify in Console:** Navigate to **ECR** > **falcon-sensor/falcon-container** > Confirm `:latest` tag exists.
 
 ---
 
@@ -313,7 +356,7 @@ docker inspect ${ECR_BASE}/apps/nginx:1.0-falcon --format '{{.Config.Entrypoint}
 docker push ${ECR_BASE}/apps/nginx:1.0-falcon
 ```
 
-- [ ] **Verify in Console:** Navigate to **ECR** → **apps/nginx** → Confirm both `:1.0` and `:1.0-falcon` tags exist.
+- [ ] **Verify in Console:** Navigate to **ECR** > **apps/nginx** > Confirm both `:1.0` and `:1.0-falcon` tags exist.
 
 > You now understand the full flow manually. Next, we'll automate this with GitHub Actions.
 
@@ -327,14 +370,14 @@ docker push ${ECR_BASE}/apps/nginx:1.0-falcon
 
 > **What & Why:** GitHub Actions needs AWS credentials to pull/push ECR images. OIDC federation lets the runner assume an IAM role using a short-lived token — no long-lived access keys stored in GitHub secrets.
 
-- [ ] **Console:** Navigate to **IAM** → **Identity providers** → Click **Add provider**
+- [ ] **Console:** Navigate to **IAM** > **Identity providers** > Click **Add provider**
   - Provider type: **OpenID Connect**
   - Provider URL: `https://token.actions.githubusercontent.com`
   - Click **Get thumbprint**
   - Audience: `sts.amazonaws.com`
   - Click **Add provider**
 
-- [ ] **Console:** Navigate to **IAM** → **Roles** → Click **Create role**
+- [ ] **Console:** Navigate to **IAM** > **Roles** > Click **Create role**
   - Trusted entity type: **Web identity**
   - Identity provider: `token.actions.githubusercontent.com`
   - Audience: `sts.amazonaws.com`
@@ -378,7 +421,7 @@ docker push ${ECR_BASE}/apps/nginx:1.0-falcon
 
 - [ ] **Edit the trust policy** to restrict to your specific repo:
 
-  Navigate to the role → **Trust relationships** → **Edit trust policy**:
+  Navigate to the role > **Trust relationships** > **Edit trust policy**:
 
 ```json
 {
@@ -431,7 +474,7 @@ aws iam put-role-policy \
 
 > **What & Why:** The workflow needs CrowdStrike credentials to run `falconutil` and the IAM role ARN for AWS authentication. Secrets are encrypted; variables are plaintext config.
 
-- [ ] **GitHub:** Navigate to your repo → **Settings** → **Secrets and variables** → **Actions**
+- [ ] **GitHub:** Navigate to your repo > **Settings** > **Secrets and variables** > **Actions**
 
   **Secrets** (encrypted):
   | Name | Value |
@@ -539,7 +582,7 @@ jobs:
 
 > **What & Why:** Manually dispatch the workflow to patch each image. This simulates what a security team would do — or what an automated trigger would invoke.
 
-- [ ] **GitHub:** Navigate to your repo → **Actions** → **Patch Container Image with Falcon Sensor** → Click **Run workflow**
+- [ ] **GitHub:** Navigate to your repo > **Actions** > **Patch Container Image with Falcon Sensor** > Click **Run workflow**
   - Branch: `main`
   - Image name: `apps/nginx`
   - Image tag: `1.0`
@@ -555,7 +598,7 @@ jobs:
 
 > **What & Why:** Confirm all 3 images now have both their original tag and the patched `-falcon` tag.
 
-- [ ] **Console:** Navigate to **ECR** → **Repositories** → Click into each `apps/*` repo
+- [ ] **Console:** Navigate to **ECR** > **Repositories** > Click into each `apps/*` repo
 
   **Expected state:**
   | Repository | Tags present |
@@ -688,7 +731,35 @@ terraform apply
 
 ---
 
-## 9. Challenges
+## 9. Cleanup
+
+When you're done with the lab:
+
+```bash
+# Option 1: Terraform (if you completed Section 8)
+terraform destroy
+
+# Option 2: Manual
+for repo in apps/nginx apps/python-flask apps/node-express falcon-sensor/falcon-container; do
+  # Delete all images first (required before repo deletion)
+  aws ecr list-images --repository-name "$repo" --region $AWS_REGION \
+    --query 'imageIds[*]' --output json | \
+    xargs -I {} aws ecr batch-delete-image --repository-name "$repo" \
+    --region $AWS_REGION --image-ids '{}'
+  # Delete the repo
+  aws ecr delete-repository --repository-name "$repo" --region $AWS_REGION --force
+done
+
+# Delete IAM role and OIDC provider
+aws iam delete-role-policy --role-name github-actions-falcon-patching --policy-name ecr-pull-push
+aws iam delete-role --role-name github-actions-falcon-patching
+```
+
+</div>
+
+---
+
+## 10. Challenges
 
 > **~15 min | Advanced**
 
@@ -887,44 +958,18 @@ For the lifecycle policy (add to Terraform or apply via console):
 
 ---
 
-## 10. Quick Reference
+## 11. Quick Reference
 
 | Action | Console Path | CLI Command |
 |--------|-------------|-------------|
-| Create ECR repo | ECR → Repositories → Create | `aws ecr create-repository --repository-name <name>` |
-| List image tags | ECR → Repo → Images | `aws ecr describe-images --repository-name <name>` |
+| Create ECR repo | ECR > Repositories > Create | `aws ecr create-repository --repository-name <name>` |
+| List image tags | ECR > Repo > Images | `aws ecr describe-images --repository-name <name>` |
 | ECR Docker login | — | `aws ecr get-login-password \| docker login --username AWS --password-stdin <ecr-url>` |
 | Pull CrowdStrike sensor | — | `bash <(curl -Ls .../falcon-container-sensor-pull.sh) -t falcon-container --platform x86_64` |
 | Patch image locally | — | `docker run ... falconutil patch-image --source-image-uri <src> --target-image-uri <tgt> --falcon-image-uri <sensor> --cid <cid>` |
-| Trigger GH Actions | Actions → Workflow → Run workflow | `gh workflow run patch-image.yml -f image_name=apps/nginx -f image_tag=1.0` |
-| Create OIDC provider | IAM → Identity providers → Add | `aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com ...` |
+| Trigger GH Actions | Actions > Workflow > Run workflow | `gh workflow run patch-image.yml -f image_name=apps/nginx -f image_tag=1.0` |
+| Create OIDC provider | IAM > Identity providers > Add | `aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com ...` |
 | Assume role (GH Action) | — | `aws-actions/configure-aws-credentials@v4` with `role-to-assume` |
-
----
-
-## Cleanup
-
-When you're done with the lab:
-
-```bash
-# Option 1: Terraform (if you completed Section 8)
-terraform destroy
-
-# Option 2: Manual
-for repo in apps/nginx apps/python-flask apps/node-express falcon-sensor/falcon-container; do
-  # Delete all images first (required before repo deletion)
-  aws ecr list-images --repository-name "$repo" --region $AWS_REGION \
-    --query 'imageIds[*]' --output json | \
-    xargs -I {} aws ecr batch-delete-image --repository-name "$repo" \
-    --region $AWS_REGION --image-ids '{}'
-  # Delete the repo
-  aws ecr delete-repository --repository-name "$repo" --region $AWS_REGION --force
-done
-
-# Delete IAM role and OIDC provider
-aws iam delete-role-policy --role-name github-actions-falcon-patching --policy-name ecr-pull-push
-aws iam delete-role --role-name github-actions-falcon-patching
-```
 
 ---
 

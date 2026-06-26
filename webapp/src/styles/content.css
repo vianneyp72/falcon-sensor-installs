@@ -480,6 +480,63 @@
   margin-bottom: 0.5rem;
 }
 
+/* Mode toggle (Guide / Lab) */
+.mode-toggle-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 2.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.mode-toggle-wrapper__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.mode-toggle {
+  display: inline-flex;
+  background: var(--nav-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  gap: 2px;
+}
+
+.mode-toggle__tab {
+  padding: 0.55rem 1.4rem;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s cubic-bezier(0.25, 1, 0.5, 1),
+              color 0.2s cubic-bezier(0.25, 1, 0.5, 1),
+              box-shadow 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.mode-toggle__tab:hover {
+  color: var(--text);
+  background: rgba(97, 196, 201, 0.05);
+}
+
+.mode-toggle__tab--active {
+  background: rgba(97, 196, 201, 0.14);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(97, 196, 201, 0.25);
+}
+
+/* Mode content visibility */
+.mode-content--hidden {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .content-area {
     padding: 1.5rem 1rem;

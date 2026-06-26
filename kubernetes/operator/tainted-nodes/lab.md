@@ -22,9 +22,102 @@ This guide covers the three-step process:
 
 ---
 
-## Step 0: Replicate an All-Nodes-Tainted Scenario (Lab/Testing)
+## Deployment Steps
 
-Apply an example taint to all nodes:
+<div data-mode="guide">
+
+### 1. Set API credentials
+
+```bash
+export FALCON_CLIENT_ID=<YOUR_CLIENT_ID>
+export FALCON_CLIENT_SECRET=<YOUR_CLIENT_SECRET>
+```
+
+### 2. Download and patch the Falcon Operator manifest
+
+```bash
+# Replace [version] with the target release (e.g., 1.5.0)
+curl -LO https://github.com/crowdstrike/falcon-operator/releases/download/v[version]/falcon-operator.yaml
+```
+
+Add `tolerations: [{operator: "Exists"}]` to the controller-manager Deployment pod spec (around line 10992).
+
+### 3. Deploy the operator
+
+```bash
+kubectl apply -f falcon-operator.yaml
+```
+
+### 4. Deploy FalconDeployment CRD with tolerations
+
+```bash
+curl -LO https://raw.githubusercontent.com/crowdstrike/falcon-operator/refs/tags/v[version]/config/samples/falcon_v1alpha1_falcondeployment-node-sensor.yaml
+```
+
+Edit the manifest to set your credentials and add tolerations:
+
+```yaml
+spec:
+  falcon_api:
+    client_id: <CLIENT_ID>
+    client_secret: <CLIENT_SECRET>
+    cloud_region: autodiscover
+  falconNodeSensor:
+    node:
+      tolerations:
+        - operator: Exists
+```
+
+```bash
+kubectl apply -f falcon_v1alpha1_falcondeployment-node-sensor.yaml
+```
+
+### 5. Patch KAC and IAR with tolerations
+
+```bash
+kubectl patch deployment falcon-kac -n falcon-kac \
+  --type=json \
+  -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"operator": "Exists"}]}]'
+
+kubectl patch deployment falcon-image-analyzer -n falcon-iar \
+  --type=json \
+  -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"operator": "Exists"}]}]'
+```
+
+### 6. Verify
+
+```bash
+kubectl get pods -A | grep falcon
+```
+
+</div>
+
+<div data-mode="lab">
+
+### Step 0: Provision a Cluster and Taint All Nodes
+
+Create a test cluster (using kind for local testing, or adapt for your cloud provider):
+
+```bash
+# Option A: Local cluster with kind
+kind create cluster --name falcon-taint-lab --config - <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+EOF
+
+# Option B: GKE Standard
+# gcloud container clusters create falcon-taint-lab \
+#   --num-nodes=3 --machine-type=e2-medium --region=<YOUR_REGION>
+
+# Option C: EKS
+# eksctl create cluster --name falcon-taint-lab --nodes 3 --node-type m5.large
+```
+
+Apply a taint to all worker nodes to simulate a hardened environment:
 
 ```bash
 kubectl taint nodes --all node-role=application:NoSchedule
@@ -38,7 +131,7 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 
 ---
 
-## Step 1: Deploy the Falcon Operator with Tolerations
+### Step 1: Deploy the Falcon Operator with Tolerations
 
 The operator itself must tolerate the taints to schedule its controller-manager pod.
 
@@ -81,9 +174,15 @@ Verify the operator pod is running:
 kubectl get pods -n falcon-operator
 ```
 
+Confirm it scheduled on a tainted node:
+
+```bash
+kubectl get pods -n falcon-operator -o wide
+```
+
 ---
 
-## Step 2: Deploy the FalconDeployment CRD with Node Sensor Tolerations
+### Step 2: Deploy the FalconDeployment CRD with Node Sensor Tolerations
 
 Download the FalconDeployment sample manifest:
 
@@ -130,9 +229,16 @@ Verify the sensor DaemonSet pods are running on all nodes:
 kubectl get pods -n falcon-system -o wide
 ```
 
+Check that every node has a sensor pod:
+
+```bash
+kubectl get daemonset -n falcon-system
+# DESIRED and READY counts should match total node count
+```
+
 ---
 
-## Step 3: Patch KAC and IAR Deployments with Tolerations
+### Step 3: Patch KAC and IAR Deployments with Tolerations
 
 The FalconAdmission (KAC) and FalconImageAnalyzer (IAR) CRDs **do not expose a `tolerations` field** in their spec. When these components are deployed by the operator onto tainted nodes, their pods will remain in a `Pending` state.
 
@@ -140,7 +246,7 @@ The FalconAdmission (KAC) and FalconImageAnalyzer (IAR) CRDs **do not expose a `
 
 The workaround is to patch the Deployments directly after the operator creates them.
 
-### Patch KAC (Kubernetes Admission Controller)
+#### Patch KAC (Kubernetes Admission Controller)
 
 ```bash
 kubectl patch deployment falcon-kac -n falcon-kac \
@@ -148,7 +254,7 @@ kubectl patch deployment falcon-kac -n falcon-kac \
   -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"operator": "Exists"}]}]'
 ```
 
-### Patch IAR (Image Assessment at Runtime)
+#### Patch IAR (Image Assessment at Runtime)
 
 ```bash
 kubectl patch deployment falcon-image-analyzer -n falcon-iar \
@@ -156,7 +262,7 @@ kubectl patch deployment falcon-image-analyzer -n falcon-iar \
   -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"operator": "Exists"}]}]'
 ```
 
-### Verify all components are running
+#### Verify all components are running
 
 ```bash
 kubectl get pods -n falcon-kac
@@ -164,6 +270,69 @@ kubectl get pods -n falcon-iar
 ```
 
 > **Important:** These patches are applied to the live Deployment objects. If the operator reconciles and recreates these Deployments (e.g., during a sensor version update), you will need to re-apply the patches.
+
+---
+
+### Step 4: Deep Verification
+
+Check the operator logs for reconciliation status:
+
+```bash
+kubectl logs -n falcon-operator -l control-plane=controller-manager --tail=30
+```
+
+Verify node sensor is reporting to the CrowdStrike cloud:
+
+```bash
+kubectl logs -n falcon-system -l crowdstrike.com/component=crowdstrike-falcon-node-sensor --tail=20
+```
+
+Confirm KAC webhook is active and intercepting requests:
+
+```bash
+kubectl get validatingwebhookconfigurations | grep falcon
+```
+
+Test that a workload is visible to the sensor:
+
+```bash
+kubectl create namespace test-detection
+kubectl run nginx --image=nginx -n test-detection
+kubectl wait --for=condition=Ready pod/nginx -n test-detection --timeout=60s
+kubectl delete namespace test-detection
+```
+
+---
+
+### Step 5: Cleanup
+
+Remove the Falcon components:
+
+```bash
+kubectl delete -f falcon_v1alpha1_falcondeployment-node-sensor.yaml
+kubectl delete -f falcon-operator.yaml
+```
+
+Remove the example taint from all nodes:
+
+```bash
+kubectl taint nodes --all node-role=application:NoSchedule-
+```
+
+Delete the test cluster:
+
+```bash
+# kind
+kind delete cluster --name falcon-taint-lab
+
+# GKE
+# gcloud container clusters delete falcon-taint-lab --region=<YOUR_REGION> --quiet
+
+# EKS
+# eksctl delete cluster --name falcon-taint-lab
+```
+
+</div>
 
 ---
 
@@ -175,13 +344,3 @@ kubectl get pods -n falcon-iar
 | Node Sensor     | FalconDeployment CRD                        | `spec.falconNodeSensor.node.tolerations` |
 | KAC             | Manual `kubectl patch`                      | N/A (not exposed in CRD)                 |
 | IAR             | Manual `kubectl patch`                      | N/A (not exposed in CRD)                 |
-
----
-
-## Cleanup (Lab/Testing)
-
-Remove the example taint from all nodes:
-
-```bash
-kubectl taint nodes --all node-role=application:NoSchedule-
-```

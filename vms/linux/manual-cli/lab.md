@@ -29,14 +29,14 @@
 The Falcon sensor for Linux is a lightweight agent that attaches eBPF probes into the kernel from userspace. It observes system calls, process events, and file/network activity, then streams telemetry to the CrowdStrike cloud over a persistent TLS connection.
 
 ```
-┌───────────────────────────────┐
-│ falcon-sensor (userspace)     │──── eBPF ────▶ Linux Kernel
-└───────────────┬───────────────┘
+┌───────────────────────────────────┐
+│ falcon-sensor (userspace)         │──── eBPF ────▶ Linux Kernel
+└───────────────┬───────────────────┘
                 │ TLS 443
                 ▼
-┌───────────────────────────────┐
-│ CrowdStrike Falcon Cloud      │
-└───────────────────────────────┘
+┌───────────────────────────────────┐
+│ CrowdStrike Falcon Cloud          │
+└───────────────────────────────────┘
 ```
 
 **Key facts:**
@@ -70,13 +70,105 @@ The Falcon sensor for Linux is a lightweight agent that attaches eBPF probes int
 
 ---
 
-## 3. Install the Sensor
+## Deployment Steps
+
+<div data-mode="guide">
+
+### 1. Set API credentials
+
+```bash
+export FALCON_CLIENT_ID="<your-client-id>"
+export FALCON_CLIENT_SECRET="<your-client-secret>"
+```
+
+### 2. Run the install script
+
+```bash
+curl -L https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-install.sh | sudo bash
+```
+
+### 3. Verify
+
+```bash
+sudo systemctl status falcon-sensor
+sudo /opt/CrowdStrike/falconctl -g --aid
+```
+
+`Active: active (running)` and a valid 32-character AID confirms successful registration.
+
+</div>
+
+<div data-mode="lab">
+
+## 3. Launch a Linux EC2 Instance
+
+> **~10 min | Beginner**
+
+> **What this does:** Provisions a fresh EC2 instance to use as your target host for sensor installation. We use Amazon Linux 2023 as the target OS.
+
+### Set environment variables
+
+```bash
+export AWS_REGION=<your-aws-region>
+export KEY_NAME=<your-ec2-key-pair-name>
+```
+
+### Create a security group
+
+```bash
+MY_IP=$(curl -s ifconfig.me)
+
+export SG_ID=$(aws ec2 create-security-group \
+  --group-name falcon-linux-lab-sg \
+  --description "Falcon sensor lab - SSH from my IP" \
+  --query 'GroupId' --output text \
+  --region $AWS_REGION)
+
+aws ec2 authorize-security-group-ingress \
+  --group-id $SG_ID \
+  --protocol tcp \
+  --port 22 \
+  --cidr "${MY_IP}/32" \
+  --region $AWS_REGION
+```
+
+### Launch the instance
+
+```bash
+export INSTANCE_ID=$(aws ec2 run-instances \
+  --image-id resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+  --instance-type t3.micro \
+  --key-name $KEY_NAME \
+  --security-group-ids $SG_ID \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=falcon-linux-lab}]' \
+  --query 'Instances[0].InstanceId' --output text \
+  --region $AWS_REGION) && echo $INSTANCE_ID
+
+aws ec2 wait instance-running --instance-ids $INSTANCE_ID --region $AWS_REGION
+
+export PUBLIC_IP=$(aws ec2 describe-instances \
+  --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text \
+  --region $AWS_REGION) && echo $PUBLIC_IP
+```
+
+### SSH into the instance
+
+```bash
+ssh -o StrictHostKeyChecking=no ec2-user@$PUBLIC_IP
+```
+
+> Wait 30-60 seconds after launch for SSH to become available.
+
+---
+
+## 4. Install the Sensor
 
 > **~5 min | Beginner**
 
-> **What this does:** Downloads and runs the official CrowdStrike install script. It handles everything — API authentication, package download for your distro, installation, CID registration, and service start.
+> **What this does:** Downloads and runs the official CrowdStrike install script on the EC2 instance.
 
-### Set environment variables
+### Set environment variables (on the EC2 instance)
 
 ```bash
 export FALCON_CLIENT_ID="<your-client-id>"
@@ -101,84 +193,9 @@ That's it. The script will:
 4. Install it with the appropriate package manager (apt/yum/dnf/zypper)
 5. Configure the CID and start the service
 
-<details>
-<summary>Common environment variables for customization</summary>
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FALCON_CLOUD` | auto-discovered | Cloud region (`us-1`, `us-2`, `eu-1`, `us-gov-1`, `us-gov-2`) |
-| `FALCON_CID` | auto | Customer ID (auto-detected from API credentials) |
-| `FALCON_PROVISIONING_TOKEN` | unset | Installation token if required by your tenant |
-| `FALCON_TAGS` | unset | Comma-separated sensor grouping tags |
-| `FALCON_SENSOR_VERSION_DECREMENT` | 0 (latest) | Install N versions behind latest (e.g., `1` = N-1) |
-| `FALCON_SENSOR_UPDATE_POLICY_NAME` | unset | Pin to a sensor update policy version |
-| `FALCON_APH` | unset | Proxy host |
-| `FALCON_APP` | unset | Proxy port |
-| `FALCON_APD` | unset | Proxy enabled/disabled |
-| `FALCON_BILLING` | default | Billing type (`default` or `metered`) |
-| `FALCON_BACKEND` | auto | Sensor backend (`auto`, `bpf`, `kernel`) |
-| `FALCON_INSTALL_ONLY` | false | Install without registering/starting |
-| `FALCON_DOWNLOAD_ONLY` | false | Download package without installing |
-| `PREP_GOLDEN_IMAGE` | false | Prepare sensor for golden image cloning |
-
-</details>
-
-### Example: Install with tags and a provisioning token
-
-```bash
-export FALCON_CLIENT_ID="<your-client-id>"
-export FALCON_CLIENT_SECRET="<your-client-secret>"
-export FALCON_TAGS="Environment/Production,Team/Platform"
-export FALCON_PROVISIONING_TOKEN="1111AAAA"
-
-curl -L https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-install.sh | sudo bash
-```
-
-### Example: Install a specific version (N-1)
-
-```bash
-export FALCON_CLIENT_ID="<your-client-id>"
-export FALCON_CLIENT_SECRET="<your-client-secret>"
-export FALCON_SENSOR_VERSION_DECREMENT=1
-
-curl -L https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-install.sh | sudo bash
-```
-
-### Example: Download only (for air-gapped staging)
-
-```bash
-export FALCON_CLIENT_ID="<your-client-id>"
-export FALCON_CLIENT_SECRET="<your-client-secret>"
-export FALCON_DOWNLOAD_ONLY=true
-export FALCON_DOWNLOAD_PATH="/tmp/falcon-packages"
-
-curl -L https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-install.sh | sudo bash
-```
-
-### Alternative: Pre-authenticate with an access token
-
-For batch installs across many hosts, generate a token once and reuse it to avoid hitting the OAuth endpoint per-host:
-
-```bash
-# On your workstation — get the token
-export FALCON_CLIENT_ID="<your-client-id>"
-export FALCON_CLIENT_SECRET="<your-client-secret>"
-export GET_ACCESS_TOKEN=true
-
-TOKEN=$(curl -sL https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-install.sh | bash)
-
-# On each target host — install using the token
-export FALCON_ACCESS_TOKEN="$TOKEN"
-export FALCON_CLOUD="us-1"
-
-curl -L https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-install.sh | sudo bash
-```
-
-> **Note:** Access tokens expire after 30 minutes.
-
 ---
 
-## 4. Verify Registration
+## 5. Verify Registration
 
 > **~5 min | Beginner**
 
@@ -216,9 +233,58 @@ sudo /opt/CrowdStrike/falconctl -g --aid
 
 A valid AID (32-character hex string) confirms successful registration.
 
+### Get full sensor configuration
+
+```bash
+sudo /opt/CrowdStrike/falconctl -g --cid --aid --version --tags --cloud
+```
+
 ### Find the host in the Falcon console
 
-Navigate to **Host setup and management** > **Host management** and search for your hostname or AID. The host should appear within 5-10 minutes.
+1. Navigate to **Host setup and management** > **Host management**
+2. Search for `falcon-linux-lab` or paste the AID
+3. Verify the host shows **Online** (green dot)
+4. Confirm OS shows as Amazon Linux 2023
+
+### Test a detection (optional)
+
+Generate a test detection visible in the Falcon console:
+
+```bash
+bash -c 'echo "test" > /tmp/cs-detection-test && chmod +x /tmp/cs-detection-test && /tmp/cs-detection-test; rm -f /tmp/cs-detection-test'
+```
+
+Check for the event in **Endpoint detections** > **Activity** within a few minutes.
+
+---
+
+## 6. Cleanup
+
+> **~2 min | Beginner**
+
+### Uninstall the sensor (from the EC2 instance)
+
+```bash
+export FALCON_CLIENT_ID="<your-client-id>"
+export FALCON_CLIENT_SECRET="<your-client-secret>"
+
+curl -L https://raw.githubusercontent.com/CrowdStrike/falcon-scripts/main/bash/install/falcon-linux-uninstall.sh | sudo bash
+```
+
+### Exit SSH and terminate the instance
+
+```bash
+exit
+```
+
+```bash
+aws ec2 terminate-instances --instance-ids $INSTANCE_ID --region $AWS_REGION
+aws ec2 wait instance-terminated --instance-ids $INSTANCE_ID --region $AWS_REGION
+
+aws ec2 delete-security-group --group-id $SG_ID --region $AWS_REGION
+```
+
+</div>
 
 ---
 

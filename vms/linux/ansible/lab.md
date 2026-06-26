@@ -42,10 +42,10 @@ The `crowdstrike.falcon` Ansible collection is CrowdStrike's official automation
 │  │  • Sets CID (auto-fetched from API)                                │  │
 │  │  • Applies grouping tags                                           │  │
 │  │  • Starts falcon-sensor service                                    │  │
-│  └──────────┬────────────────────────────────┬──────────────────────┘  │
-└─────────────┼────────────────────────────────┼─────────────────────────┘
-              │ SSH                             │ SSH
-              ▼                                ▼
+│  └──────────┬────────────────────────────────────────┬──────────────┘  │
+└─────────────┼────────────────────────────────────────┼─────────────────┘
+              │ SSH                                     │ SSH
+              ▼                                        ▼
 ┌────────────────────────┐       ┌────────────────────────┐
 │  falcon-linux-deb-12   │       │  falcon-linux-deb-13   │
 │  (Debian 12 Bookworm)  │       │  (Debian 13 Trixie)    │
@@ -131,6 +131,75 @@ print(auth.token()['status_code'])  # Should print 201
 </details>
 
 ---
+
+## Deployment Steps
+
+<div data-mode="guide">
+
+### 1. Set API credentials
+
+```bash
+export FALCON_CLIENT_ID="<your-client-id>"
+export FALCON_CLIENT_SECRET="<your-client-secret>"
+```
+
+### 2. Write the inventory
+
+Create `inventory.ini` targeting your existing hosts:
+
+```ini
+[falcon_hosts]
+host1 ansible_host=<IP_ADDRESS_1>
+host2 ansible_host=<IP_ADDRESS_2>
+
+[falcon_hosts:vars]
+ansible_user=<YOUR_SSH_USERNAME>
+ansible_ssh_private_key_file=~/.ssh/<YOUR_KEY>
+ansible_ssh_common_args=-o StrictHostKeyChecking=no
+```
+
+### 3. Write the playbook
+
+Create `deploy-falcon.yml`:
+
+```yaml
+---
+- name: Deploy CrowdStrike Falcon Sensor
+  hosts: falcon_hosts
+  vars:
+    falcon_client_id: "{{ lookup('env', 'FALCON_CLIENT_ID') }}"
+    falcon_client_secret: "{{ lookup('env', 'FALCON_CLIENT_SECRET') }}"
+    falcon_tags: "ansible-deployed"
+
+  roles:
+    - role: crowdstrike.falcon.falcon_install
+      vars:
+        falcon_sensor_version_decrement: 2
+
+    - role: crowdstrike.falcon.falcon_configure
+      vars:
+        falcon_tags: "{{ falcon_tags }}"
+```
+
+### 4. Run the playbook
+
+```bash
+ansible-playbook -i inventory.ini deploy-falcon.yml
+```
+
+Look for `failed=0` in the PLAY RECAP.
+
+### 5. Verify
+
+```bash
+ansible -i inventory.ini falcon_hosts -m command -a "/opt/CrowdStrike/falconctl -g --aid" --become
+```
+
+A valid 32-character AID on each host confirms registration.
+
+</div>
+
+<div data-mode="lab">
 
 ## 3. Create 2 GCE VMs
 
@@ -251,7 +320,7 @@ gcloud compute firewall-rules create falcon-lab-deny-ssh \
 
 - [ ] **Console:** On the **VM Instances** page, confirm both show a green checkmark under **Status**
 
-> 📝 **Save for Terraform:** Note the external IPs shown for each VM — you'll need them for the Ansible inventory.
+> Save for Terraform: Note the external IPs shown for each VM — you'll need them for the Ansible inventory.
 
 ### Step 5: Initialize SSH keys
 
@@ -450,6 +519,30 @@ ansible-playbook -i inventory.ini deploy-falcon.yml --ask-vault-pass
 > - VPC firewall allows egress to `*.cloudsink.net:443`
 > - Run: `ansible -i inventory.ini falcon_hosts -m command -a "systemctl status falcon-sensor" --become`
 
+### Step 3: Deep verification via SSH
+
+- [ ] Check sensor process is running on each host:
+
+```bash
+ansible -i inventory.ini falcon_hosts -m command -a "ps aux | grep falcon-sensor" --become
+```
+
+- [ ] Verify the Agent ID (AID) is set:
+
+```bash
+ansible -i inventory.ini falcon_hosts -m command -a "/opt/CrowdStrike/falconctl -g --aid" --become
+```
+
+> Look for: a 32-character hex string on each host.
+
+- [ ] Verify cloud connectivity:
+
+```bash
+ansible -i inventory.ini falcon_hosts -m command -a "ss -tnp | grep falcon" --become
+```
+
+> Look for: `ESTAB` connection on port 443.
+
 ---
 
 ## 7. Connect Back to Terraform
@@ -539,8 +632,6 @@ terraform apply
 ansible-playbook -i inventory.ini deploy-falcon.yml --ask-vault-pass
 ```
 
-> 🎉 You now have a fully repeatable workflow: `terraform apply` → `ansible-playbook` → sensors deployed.
-
 ---
 
 ## 8. Challenges
@@ -550,14 +641,14 @@ ansible-playbook -i inventory.ini deploy-falcon.yml --ask-vault-pass
 **Scenario:** Your team runs web servers on Debian 12 and databases on Debian 13. They want each group to automatically get different sensor grouping tags without modifying the playbook.
 
 <details>
-<summary>💡 Hint</summary>
+<summary>Hint</summary>
 
 Create `group_vars/debian12/falcon.yml` and `group_vars/debian13/falcon.yml` with different `falcon_tags` values. Ansible merges group variables automatically — group-level vars override `all` vars.
 
 </details>
 
 <details>
-<summary>✅ Solution</summary>
+<summary>Solution</summary>
 
 ```bash
 mkdir -p group_vars/debian12 group_vars/debian13
@@ -590,14 +681,14 @@ ansible-playbook -i inventory.ini deploy-falcon.yml --ask-vault-pass
 **Scenario:** Your security team manages sensor versions via Falcon Sensor Update Policies (e.g., "Production Linux - N-2"). Use the policy name to determine which version to install instead of hardcoding `falcon_sensor_version_decrement`.
 
 <details>
-<summary>💡 Hint</summary>
+<summary>Hint</summary>
 
 The `falcon_install` role accepts `falcon_sensor_update_policy_name` as a variable. Set it to the exact policy name from your Falcon console. This overrides `falcon_sensor_version_decrement`.
 
 </details>
 
 <details>
-<summary>✅ Solution</summary>
+<summary>Solution</summary>
 
 Update `deploy-falcon.yml`:
 
@@ -628,14 +719,14 @@ Your API client needs **Sensor update policies [read]** scope (which we added in
 **Scenario:** You don't want to maintain a static inventory file. Use the `crowdstrike.falcon.falcon_hosts` inventory plugin to dynamically pull hosts from the Falcon console based on tags, then run a compliance check.
 
 <details>
-<summary>💡 Hint</summary>
+<summary>Hint</summary>
 
 Create a file ending in `falcon.yml` (e.g., `inventory_falcon.yml`) with the plugin config. Use `filter` with FQL to target hosts by tag. The plugin requires `falcon_client_id` and `falcon_client_secret`.
 
 </details>
 
 <details>
-<summary>✅ Solution</summary>
+<summary>Solution</summary>
 
 Create `inventory_falcon.yml`:
 
@@ -665,7 +756,34 @@ This pulls all hosts tagged `<YOUR_CLOUD>/<YOUR_REGION>` from your Falcon tenant
 
 ---
 
-## 9. Quick Reference
+## 9. Cleanup
+
+Remove all lab infrastructure:
+
+```bash
+terraform destroy
+```
+
+Or manually via gcloud:
+
+```bash
+gcloud compute instances delete falcon-linux-deb-12 --zone=<YOUR_GCP_ZONE> --quiet
+gcloud compute instances delete falcon-linux-deb-13 --zone=<YOUR_GCP_ZONE> --quiet
+gcloud compute firewall-rules delete falcon-lab-allow-ssh --quiet
+gcloud compute firewall-rules delete falcon-lab-deny-ssh --quiet
+```
+
+Remove Ansible artifacts:
+
+```bash
+rm -rf group_vars/ inventory.ini deploy-falcon.yml
+```
+
+</div>
+
+---
+
+## Quick Reference
 
 ### Ansible Commands
 
