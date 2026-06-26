@@ -1285,7 +1285,7 @@ This creates a fully automated pipeline: dev pushes image > GAR > Pub/Sub > Clou
 
 </div>
 
----
+<div data-mode="lab">
 
 ## 13. Quick Reference
 
@@ -1306,3 +1306,5 @@ This creates a fully automated pipeline: dev pushes image > GAR > Pub/Sub > Clou
 ---
 
 _Created: 2026-06-15 | Topics: cloud-security, falcon-sensor, cloud-run, artifact-registry, github-actions, workload-identity-federation, image-patching, serverless_
+
+</div>
